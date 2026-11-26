@@ -1,0 +1,3479 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>灌籃高手 3v3 公測版</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --tc-font: "PingFang TC", "Microsoft JhengHei", "Heiti TC", "Noto Sans TC", sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: var(--tc-font);
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #090d16;
+    color: #f8fafc;
+    font-family: var(--tc-font);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+  .comic-text {
+    font-family: var(--tc-font);
+    font-weight: 900;
+    text-shadow: 0 3px 0 #000, 0 0 12px rgba(0, 0, 0, 0.85);
+  }
+  @keyframes chibiFloat {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(-6px) scale(1.025); }
+  }
+  .chibi-idle {
+    animation: chibiFloat 2.6s ease-in-out infinite;
+  }
+  @keyframes auraSpin {
+    0% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.06); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+  .ult-aura-ring {
+    animation: auraSpin 5s linear infinite;
+  }
+  @keyframes bannerPop {
+    0% { transform: translate(-50%, -20px) scale(0.45); opacity: 0; }
+    18% { transform: translate(-50%, 0px) scale(1.12); opacity: 1; }
+    30% { transform: translate(-50%, 0px) scale(1); opacity: 1; }
+    82% { transform: translate(-50%, 0px) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -18px) scale(0.92); opacity: 0; }
+  }
+  .banner-anim {
+    animation: bannerPop 1.55s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+  }
+  @keyframes cutInSlide {
+    0% { transform: translateX(-115%) skewX(-10deg); opacity: 0; }
+    16% { transform: translateX(0%) skewX(-10deg); opacity: 1; }
+    82% { transform: translateX(0%) skewX(-10deg); opacity: 1; }
+    100% { transform: translateX(115%) skewX(-10deg); opacity: 0; }
+  }
+  .cutin-bar {
+    animation: cutInSlide 1.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .menu-scroll {
+    touch-action: pan-y;
+    overflow-y: auto;
+  }
+  .action-btn {
+    transition: transform 0.08s ease, box-shadow 0.15s ease;
+    touch-action: none;
+  }
+  .action-btn:active {
+    transform: scale(0.91);
+  }
+</style>
+</head>
+<body class="relative w-full h-full">
+
+<!-- 遊戲主畫布 -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- 頂部中央計分板 HUD -->
+<div id="hudTop" class="hidden fixed top-2 sm:top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none w-full max-w-md px-2">
+  <div class="flex items-center bg-slate-950/90 border-2 border-slate-700/90 rounded-2xl px-3 sm:px-5 py-1.5 shadow-2xl backdrop-blur-md gap-3 sm:gap-5">
+    <!-- 紅隊比分 -->
+    <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded bg-red-600 text-[11px] sm:text-xs font-black tracking-wider text-white">湘北紅</span>
+      <span id="scoreRed" class="text-2xl sm:text-3xl font-black text-red-400 comic-text">0</span>
+    </div>
+
+    <!-- 時間與進攻計時 -->
+    <div class="flex flex-col items-center border-x border-slate-700/80 px-3 sm:px-4">
+      <span id="gameClock" class="text-lg sm:text-xl font-black text-amber-300 tracking-widest leading-none">02:00</span>
+      <div class="flex items-center gap-1 mt-0.5">
+        <span class="text-[10px] text-slate-400 font-bold">進攻</span>
+        <span id="shotClock" class="text-xs font-black text-cyan-300">14</span>
+        <span class="text-[10px] text-slate-400 font-bold">秒</span>
+      </div>
+    </div>
+
+    <!-- 藍隊比分 -->
+    <div class="flex items-center gap-2">
+      <span id="scoreBlue" class="text-2xl sm:text-3xl font-black text-sky-400 comic-text">0</span>
+      <span class="px-2 py-0.5 rounded bg-sky-600 text-[11px] sm:text-xs font-black tracking-wider text-white">陵南藍</span>
+    </div>
+  </div>
+
+  <!-- 三分線洗球提示條 -->
+  <div id="clearBallAlert" class="hidden mt-1.5 px-4 py-1 rounded-full bg-cyan-700/95 border-2 border-yellow-300 text-xs sm:text-sm font-black tracking-wide text-white shadow-[0_0_18px_rgba(34,211,238,0.8)] animate-bounce">
+    請出三分線洗球！（運球或傳球跨出閃爍弧線）
+  </div>
+</div>
+
+<!-- 左上角：即時 Q 版卡通頭像 HUD 面板 + 隊友迷你頭像 -->
+<div id="liveAvatarHud" class="hidden fixed top-2.5 left-2.5 sm:top-3 sm:left-3 z-20 flex flex-col gap-1.5 pointer-events-none">
+  <div id="mainAvatarCard" class="flex items-center gap-2.5 bg-slate-900/90 border-2 border-red-500/85 rounded-2xl p-1.5 pr-3.5 shadow-2xl backdrop-blur-md transition-all duration-200">
+    <div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br from-red-900 via-slate-800 to-slate-950 border-2 border-amber-400/80 overflow-hidden flex items-center justify-center shrink-0">
+      <div id="avatarUltAura" class="hidden absolute inset-0 bg-gradient-to-tr from-amber-500/50 via-red-500/40 to-yellow-300/60 animate-pulse"></div>
+      <div id="hudMainPortrait" class="relative z-10 w-full h-full"></div>
+      <span id="hudMainJersey" class="absolute bottom-0 right-0 px-1 bg-red-600 text-[10px] font-black rounded-tl-md text-white leading-tight">#11</span>
+    </div>
+    <div class="flex flex-col min-w-[112px] sm:min-w-[132px]">
+      <div class="flex items-center gap-1.5">
+        <span id="hudMainName" class="text-xs sm:text-sm font-black text-white tracking-wide">流川・全能前鋒</span>
+      </div>
+      <span id="hudMoodBadge" class="text-[10px] font-bold text-amber-300">專注對決中</span>
+      <!-- 體力條 -->
+      <div class="mt-1 flex items-center gap-1.5">
+        <span class="text-[9px] font-bold text-emerald-300">體力</span>
+        <div class="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+          <div id="hudStaminaBar" class="h-full bg-gradient-to-r from-emerald-400 to-lime-300 transition-all duration-150" style="width:100%"></div>
+        </div>
+      </div>
+      <!-- 覺醒能量條 -->
+      <div class="mt-1 flex items-center gap-1.5">
+        <span class="text-[9px] font-bold text-amber-300">覺醒</span>
+        <div class="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+          <div id="hudUltBar" class="h-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-200 transition-all duration-150" style="width:35%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 兩位隊友迷你頭像 -->
+  <div id="teammateMiniRow" class="flex items-center gap-1.5 pl-0.5"></div>
+
+  <!-- 桌機鍵盤提示 -->
+  <div id="pcKeyHint" class="hidden xl:flex flex-col bg-slate-900/75 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-[10px] text-slate-300 backdrop-blur leading-snug mt-0.5">
+    <div><span class="text-amber-300 font-bold">WASD / 方向鍵</span> 移動 ｜ <span class="text-white font-bold">J</span> 投籃 / 灌籃 / 火鍋 / 籃板</div>
+    <div><span class="text-white font-bold">K</span> 傳球 / 抄截 ｜ <span class="text-white font-bold">L</span> 突破 / 卡位 ｜ <span class="text-amber-300 font-bold">Space</span> 覺醒必殺</div>
+  </div>
+</div>
+
+<!-- 右上角音效開關與返回選單按鈕（純 SVG 圖示，無亂碼風險） -->
+<div id="topRightBtns" class="hidden fixed top-2.5 right-2.5 sm:top-3 sm:right-3 z-30 flex gap-2">
+  <button id="btnToggleSound" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 shadow-lg backdrop-blur">
+    <span id="soundIconBox" class="w-4 h-4 inline-block"></span>
+    <span id="soundLabel" class="hidden sm:inline">音效開</span>
+  </button>
+  <button id="btnBackMenu" class="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-red-900/80 border border-slate-700 text-xs font-bold text-slate-200 shadow-lg backdrop-blur">
+    <span>返回選角</span>
+  </button>
+</div>
+
+<!-- 熱血文字橫幅彈出容器 -->
+<div id="bannerContainer" class="fixed top-24 sm:top-28 left-1/2 z-30 pointer-events-none"></div>
+
+<!-- 必殺大招全螢幕漫畫特寫橫幅 (Anime Cut-In) -->
+<div id="ultCutInOverlay" class="hidden fixed inset-0 z-40 pointer-events-none flex items-center justify-center overflow-hidden bg-black/40">
+  <div id="ultCutInBar" class="relative w-[115%] h-36 sm:h-48 bg-gradient-to-r from-red-950 via-red-600 to-amber-500 border-y-4 border-yellow-200 shadow-[0_0_60px_rgba(245,158,11,0.95)] flex items-center justify-center px-6 sm:px-16 overflow-hidden">
+    <div class="absolute inset-0 opacity-25 bg-[repeating-linear-gradient(90deg,transparent,transparent_16px,#ffffff_16px,#ffffff_20px)]"></div>
+    <div id="ultCutInPortrait" class="relative z-10 w-32 h-32 sm:w-44 sm:h-44 -mt-1 drop-shadow-[0_6px_16px_rgba(0,0,0,0.85)] shrink-0"></div>
+    <div class="relative z-10 ml-3 sm:ml-6 flex flex-col">
+      <span id="ultCutInChar" class="inline-block w-fit px-2.5 py-0.5 rounded bg-black/75 text-amber-300 text-xs sm:text-sm font-black tracking-widest mb-1">#11 流川・覺醒必殺技</span>
+      <div id="ultCutInSkill" class="text-2xl sm:text-5xl font-black comic-text text-white tracking-wider">換手飛人暴扣！</div>
+      <div class="text-[11px] sm:text-xs font-extrabold text-yellow-100 tracking-widest mt-0.5">ULTIMATE AWAKENING SKILL</div>
+    </div>
+  </div>
+</div>
+
+<!-- 左下角虛擬搖桿 & 右下角圓形技能按鈕 -->
+<div id="hudControls" class="hidden fixed inset-x-0 bottom-0 z-20 pointer-events-none p-3 sm:p-5 flex justify-between items-end">
+  <!-- 虛擬搖桿區 -->
+  <div id="joystickZone" class="pointer-events-auto relative w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-900/55 border-2 border-slate-500/50 backdrop-blur-sm flex items-center justify-center shadow-inner">
+    <div class="w-10 h-10 rounded-full border border-slate-400/30"></div>
+    <div id="joystickKnob" class="absolute w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-amber-400 to-red-600 border-2 border-white/80 shadow-lg transition-transform duration-75"></div>
+  </div>
+
+  <!-- 右下角手遊風格圓形技能盤 -->
+  <div class="pointer-events-auto relative w-48 h-44 sm:w-60 sm:h-52">
+    <!-- Space 必殺技按鈕 (上方偏左) -->
+    <button id="btnSkillUlt" class="action-btn absolute top-0 left-3 sm:left-5 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-900/90 border-2 border-amber-400/80 flex flex-col items-center justify-center shadow-xl overflow-hidden">
+      <div id="ultFillBg" class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-orange-600 via-amber-500 to-yellow-300 opacity-75 transition-all duration-200" style="height: 35%"></div>
+      <svg class="relative z-10 w-5 h-5 text-yellow-200" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-2 8 9-12h-7l2-8z"/></svg>
+      <span id="lblUlt" class="relative z-10 text-[11px] sm:text-xs font-black text-white leading-tight">必殺 35%</span>
+      <span class="relative z-10 text-[9px] font-bold text-amber-200">Space</span>
+    </button>
+
+    <!-- L 突破 / 卡位盯防 (左下) -->
+    <button id="btnSkillL" class="action-btn absolute bottom-1 left-0 w-15 h-15 sm:w-16 sm:h-16 px-3 py-2 rounded-full bg-gradient-to-br from-emerald-600 to-teal-800 border-2 border-emerald-300/80 flex flex-col items-center justify-center shadow-xl">
+      <span id="lblBtnL" class="text-xs sm:text-sm font-black text-white leading-none">突破</span>
+      <span class="text-[10px] font-bold text-emerald-200 mt-0.5">L</span>
+    </button>
+
+    <!-- K 傳球 / 抄截 (中下) -->
+    <button id="btnSkillK" class="action-btn absolute bottom-12 left-16 sm:left-20 w-15 h-15 sm:w-16 sm:h-16 px-3 py-2 rounded-full bg-gradient-to-br from-sky-600 to-blue-800 border-2 border-sky-300/80 flex flex-col items-center justify-center shadow-xl">
+      <span id="lblBtnK" class="text-xs sm:text-sm font-black text-white leading-none">傳球</span>
+      <span class="text-[10px] font-bold text-sky-200 mt-0.5">K</span>
+    </button>
+
+    <!-- J 主按鍵：投籃/灌籃 或 火鍋/籃板 (右下最大圓鈕) -->
+    <button id="btnSkillJ" class="action-btn absolute bottom-1 right-0 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-red-500 via-orange-600 to-red-800 border-4 border-amber-300 flex flex-col items-center justify-center shadow-[0_0_25px_rgba(239,68,68,0.65)]">
+      <span id="lblBtnJ" class="text-base sm:text-lg font-black text-white leading-tight">投籃</span>
+      <span id="subLblBtnJ" class="text-[10px] font-bold text-amber-200">長按 J</span>
+    </button>
+  </div>
+</div>
+
+<!-- 選角主選單畫面 -->
+<div id="mainMenu" class="fixed inset-0 z-40 bg-gradient-to-br from-slate-950 via-slate-900 to-red-950/90 flex flex-col items-center justify-between p-3 sm:p-6 menu-scroll">
+  <!-- 背景球場斜紋裝飾 -->
+  <div class="pointer-events-none fixed inset-0 opacity-10 bg-[radial-gradient(circle_at_center,#f59e0b_0%,transparent_65%)]"></div>
+
+  <!-- 標題區 -->
+  <div class="relative z-10 text-center mt-1 sm:mt-2">
+    <div class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-red-600 text-[11px] sm:text-xs font-black tracking-widest text-white uppercase mb-1 shadow">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18"/></svg>
+      <span>3V3 ANIME CHIBI STREETBALL</span>
+    </div>
+    <h1 class="text-3xl sm:text-5xl font-black comic-text tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500">
+      灌籃高手・Q版熱血半場對決
+    </h1>
+    <p class="text-xs sm:text-sm text-slate-300 mt-1">選擇你的王牌球員！體驗綠區完美投籃、扇形干擾、籃板落點爭奪與必殺漫畫特寫</p>
+  </div>
+
+  <!-- 球員選擇卡片區 (3 張卡片含內嵌 SVG 全身立繪) -->
+  <div id="archetypeCards" class="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 w-full max-w-6xl my-2"></div>
+
+  <!-- 底部開始按鈕與操作說明按鈕 -->
+  <div class="relative z-10 flex flex-col sm:flex-row items-center gap-3 mb-2 w-full max-w-2xl justify-center">
+    <button id="btnStartMatch" class="w-full sm:w-auto px-10 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-orange-500 to-amber-500 hover:from-red-500 hover:to-yellow-400 text-white font-black text-lg sm:text-xl tracking-wider shadow-[0_0_30px_rgba(245,158,11,0.6)] border-2 border-yellow-200 transition transform hover:scale-105 active:scale-95">
+      開始 3v3 熱血對戰
+    </button>
+    <button id="btnOpenHelp" class="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-slate-100 font-bold text-sm sm:text-base border border-slate-600 shadow-lg transition">
+      操作與規則說明
+    </button>
+  </div>
+</div>
+
+<!-- 操作與規則說明彈窗 -->
+<div id="helpModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 menu-scroll">
+  <div class="bg-slate-900 border-2 border-amber-400/80 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl text-slate-200 my-auto">
+    <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+      <h2 class="text-xl sm:text-2xl font-black text-amber-400">球場操作與《灌籃高手》核心規則</h2>
+      <button id="btnCloseHelp" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm font-bold">關閉</button>
+    </div>
+    <div class="space-y-3 text-xs sm:text-sm leading-relaxed">
+      <div class="p-3 rounded-xl bg-slate-800/70 border border-slate-700">
+        <div class="font-black text-amber-300 mb-1">進攻操作（持球時）</div>
+        <p><span class="text-white font-bold">WASD / 方向鍵 / 左下搖桿</span>：八方向運球移動。</p>
+        <p><span class="text-white font-bold">長按 J（投籃 / 灌籃）</span>：顯示投籃力度條，指針進入<span class="text-emerald-400 font-bold">綠色完美區間</span>放開可大幅提高命中率！靠近籃框且移動中按 J 直接觸發霸氣<span class="text-orange-400 font-bold">灌籃</span>！</p>
+        <p><span class="text-white font-bold">K（傳球）</span>：精準傳球給空檔隊友。</p>
+        <p><span class="text-white font-bold">L（突破 Cross-over）</span>：快速橫向變向突破，有機率晃倒貼防對手使其跌坐冒冷汗！</p>
+        <p><span class="text-white font-bold">Space（覺醒必殺技）</span>：能量滿 100% 時施放角色專屬必殺大招並觸發全螢幕漫畫特寫！</p>
+      </div>
+      <div class="p-3 rounded-xl bg-slate-800/70 border border-slate-700">
+        <div class="font-black text-sky-300 mb-1">防守與籃板操作（無球時）</div>
+        <p><span class="text-white font-bold">J（火鍋封阻 / 爭搶籃板）</span>：對手投籃或灌籃瞬間跳起蓋火鍋；球打鐵彈起出現<span class="text-amber-300 font-bold">地面籃板落點光圈</span>時跳起搶籃板！</p>
+        <p><span class="text-white font-bold">K（抄截）</span>：伸手嘗試抄截運球中的對手。</p>
+        <p><span class="text-white font-bold">按住 L（貼身盯人 / 卡位）</span>：壓低重心擴大腳下<span class="text-red-400 font-bold">扇形干擾區</span>，或在籃下卡位推開對手。</p>
+      </div>
+      <div class="p-3 rounded-xl bg-cyan-950/60 border border-cyan-500/60">
+        <div class="font-black text-cyan-300 mb-0.5">攻守轉換「出三分線洗球」規則</div>
+        <p>防守方成功搶下防守籃板或抄截後，三分線會呈現青黃雙色呼吸閃爍，必須先將球運出或傳出三分線外完成「洗球」，才可出手得分！比賽限時 2 分鐘，先得 11 分或時間到領先者獲勝。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 賽後結算與 MVP 頒獎台 Modal -->
+<div id="resultModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 menu-scroll">
+  <div class="bg-slate-900 border-2 border-amber-500/80 rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl flex flex-col items-center my-auto">
+    <div id="resBadge" class="px-4 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-xs tracking-widest mb-1">MATCH FINISHED</div>
+    <h2 id="resTitle" class="text-3xl sm:text-4xl font-black comic-text text-yellow-400 mb-1">湘北紅隊 獲勝！</h2>
+    <div id="resScoreLine" class="text-lg sm:text-xl font-extrabold text-white mb-3">湘北紅 11 : 8 陵南藍</div>
+
+    <!-- 全場最佳 MVP 卡通立繪頒獎台 -->
+    <div class="w-full flex items-center justify-center gap-4 bg-gradient-to-r from-amber-950/50 via-red-950/60 to-amber-950/50 border border-amber-400/50 rounded-2xl p-3 mb-3">
+      <div id="mvpSvgBox" class="w-24 h-28 sm:w-28 sm:h-32 shrink-0 chibi-idle"></div>
+      <div class="flex flex-col">
+        <div class="inline-flex items-center gap-1 px-2.5 py-0.5 w-fit rounded bg-gradient-to-r from-yellow-300 to-amber-500 text-slate-950 text-xs font-black tracking-wider">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>
+          <span>全場最佳 MVP</span>
+        </div>
+        <div id="mvpNameTitle" class="text-xl sm:text-2xl font-black comic-text text-white mt-1">#10 櫻木・禁區霸主</div>
+        <div id="mvpStatSummary" class="text-xs sm:text-sm font-bold text-amber-200 mt-0.5">8 得分 ｜ 4 籃板 ｜ 2 火鍋 ｜ 1 抄截</div>
+      </div>
+    </div>
+
+    <!-- 全員數據統計表 -->
+    <div class="w-full overflow-x-auto rounded-xl border border-slate-700 bg-slate-950/80 mb-4">
+      <table class="w-full text-xs sm:text-sm text-left">
+        <thead class="bg-slate-800 text-slate-300">
+          <tr>
+            <th class="py-2 px-3">球員</th>
+            <th class="py-2 px-2 text-center">得分</th>
+            <th class="py-2 px-2 text-center">籃板</th>
+            <th class="py-2 px-2 text-center">火鍋</th>
+            <th class="py-2 px-2 text-center">抄截</th>
+          </tr>
+        </thead>
+        <tbody id="statsTableBody" class="divide-y divide-slate-800 text-slate-200"></tbody>
+      </table>
+    </div>
+
+    <div class="flex gap-3 w-full sm:w-auto">
+      <button id="btnRematch" class="flex-1 sm:flex-none px-7 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-yellow-400 text-white font-black text-sm sm:text-base shadow-lg">
+        再戰一場
+      </button>
+      <button id="btnResultToMenu" class="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-sm sm:text-base">
+        更換球員
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// 1. 繁體中文字型堆疊常數與 Web Audio API 即時合成音效系統
+// ============================================================================
+const TC_FONT = '"PingFang TC", "Microsoft JhengHei", "Heiti TC", "Noto Sans TC", sans-serif';
+
+class SoundSynth {
+  constructor() {
+    this.ctx = null;
+    this.enabled = true;
+  }
+
+  unlock() {
+    if (!this.enabled) return;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // 運球拍地低頻彈跳聲
+  dribble() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(145, t);
+    osc.frequency.exponentialRampToValueAtTime(46, t + 0.085);
+    gain.gain.setValueAtTime(0.28, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.095);
+  }
+
+  // 球鞋急停木地板摩擦聲 (Squeak)
+  squeak() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1450, t);
+    osc.frequency.exponentialRampToValueAtTime(2350, t + 0.05);
+    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.11);
+    gain.gain.setValueAtTime(0.09, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.125);
+  }
+
+  // 空心刷網聲 (Swish)
+  swish() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.24);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufferSize) * Math.PI);
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1900, t);
+    filter.frequency.exponentialRampToValueAtTime(750, t + 0.23);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.38, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.24);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(t);
+  }
+
+  // 打鐵彈框金屬聲 (Rim Clank)
+  clank() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    [320, 485].forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = idx === 0 ? 'square' : 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.68, t + 0.16);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    });
+  }
+
+  // 霸氣灌籃爆框重低音 (Dunk Boom)
+  dunkBoom() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.exponentialRampToValueAtTime(28, t + 0.36);
+    gain.gain.setValueAtTime(0.46, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.39);
+    this.swish();
+  }
+
+  // 火鍋封阻與強勢籃板拍擊聲
+  blockSlap() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(65, t + 0.12);
+    gain.gain.setValueAtTime(0.42, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.14);
+  }
+
+  // 裁判哨音
+  whistle() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2750, t);
+    osc.frequency.setValueAtTime(2920, t + 0.08);
+    osc.frequency.setValueAtTime(2720, t + 0.16);
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.35);
+  }
+
+  // 覺醒必殺技音效
+  ultAwaken() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    [261.6, 329.6, 392.0, 523.2, 659.2].forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f, t + i * 0.055);
+      gain.gain.setValueAtTime(0.14, t + i * 0.055);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.055 + 0.32);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t + i * 0.055);
+      osc.stop(t + i * 0.055 + 0.34);
+    });
+  }
+
+  // 進球歡呼和弦
+  cheer() {
+    if (!this.enabled || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    [392, 493.88, 587.33].forEach((f) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.10, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.46);
+    });
+  }
+}
+
+const sfx = new SoundSynth();
+
+function renderSoundButtonIcon() {
+  const box = document.getElementById('soundIconBox');
+  const lbl = document.getElementById('soundLabel');
+  if (sfx.enabled) {
+    box.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4 text-amber-300"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+    lbl.textContent = '音效開';
+  } else {
+    box.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4 text-slate-400"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M23 9l-6 6M17 9l6 6"/></svg>`;
+    lbl.textContent = '靜音中';
+  }
+}
+renderSoundButtonIcon();
+
+// ============================================================================
+// 2. 王牌角色設定與純內嵌 SVG Q版動漫人物繪製引擎 (無 Base64 / 無亂碼字元)
+// ============================================================================
+const ARCHETYPES = [
+  {
+    id: 'sf',
+    number: '11',
+    name: '流川・全能前鋒',
+    shortName: '流川',
+    roleTag: 'SF 進攻萬花筒',
+    hairStyle: 'rukawa',
+    hairColor: '#0f172a',
+    hairHighlight: '#334155',
+    skinColor: '#fbd3b6',
+    headband: false,
+    armband: true,
+    kneeBand: false,
+    chinScar: false,
+    quote: '「不管對手是誰，我都會把球灌進籃框。」',
+    ultName: '換手飛人暴扣／後仰跳投',
+    ultDesc: '三分線內無視防守飛身拉桿暴扣；外線施展極限後仰跳投！',
+    stats: {
+      speed: 4.95,
+      threePt: 0.74,
+      midPt: 0.88,
+      dunk: 0.93,
+      rebound: 0.75,
+      block: 0.77,
+      steal: 0.78,
+      greenWidth: 0.23
+    },
+    bars: { '三分外線': 75, '中距離投籃': 90, '突破與灌籃': 93, '移動速度': 90, '籃板與火鍋': 76 }
+  },
+  {
+    id: 'sg',
+    number: '14',
+    name: '三井・三分神射',
+    shortName: '三井',
+    roleTag: 'SG 炎之神射手',
+    hairStyle: 'mitsui',
+    hairColor: '#172554',
+    hairHighlight: '#3b82f6',
+    skinColor: '#f8cba6',
+    headband: false,
+    armband: false,
+    kneeBand: true,
+    chinScar: true,
+    quote: '「靜下心來……籃框在我眼裡就像大海一樣寬廣！」',
+    ultName: '極限後撤三分冷箭',
+    ultDesc: '瞬間大幅後撤步甩開防守者，投出超高弧度必殺三分球！',
+    stats: {
+      speed: 4.58,
+      threePt: 0.94,
+      midPt: 0.88,
+      dunk: 0.58,
+      rebound: 0.63,
+      block: 0.62,
+      steal: 0.83,
+      greenWidth: 0.30
+    },
+    bars: { '三分外線': 98, '中距離投籃': 88, '突破與灌籃': 68, '移動速度': 82, '籃板與火鍋': 62 }
+  },
+  {
+    id: 'pf',
+    number: '10',
+    name: '櫻木・禁區霸主',
+    shortName: '櫻木',
+    roleTag: 'PF 天才籃板王',
+    hairStyle: 'sakuragi',
+    hairColor: '#dc2626',
+    hairHighlight: '#f87171',
+    skinColor: '#f5be94',
+    headband: false,
+    armband: false,
+    kneeBand: false,
+    chinScar: false,
+    quote: '「掌控籃板球的人，就能掌控整場比賽！本天才上場啦！」',
+    ultName: '罰球線飛人戰斧灌籃',
+    ultDesc: '從罰球線遠距離旱地拔蔥飛躍禁區，戰斧轟炸籃框絕對得分！',
+    stats: {
+      speed: 4.88,
+      threePt: 0.46,
+      midPt: 0.68,
+      dunk: 0.98,
+      rebound: 0.99,
+      block: 0.97,
+      steal: 0.74,
+      greenWidth: 0.20
+    },
+    bars: { '三分外線': 48, '中距離投籃': 68, '突破與灌籃': 96, '移動速度': 87, '籃板與火鍋': 99 }
+  }
+];
+
+let svgUidCounter = 0;
+
+// 直接產生乾淨的內嵌 SVG 字串，球衣僅印純數字 (11, 14, 10)，不使用任何 Base64 編碼
+function buildChibiSVG(arc, mode = 'full', mood = 'normal', team = 'red') {
+  svgUidCounter += 1;
+  const gradId = `ballGrad_${arc.id}_${svgUidCounter}`;
+  const isRed = team === 'red';
+  const jerseyBg = isRed ? '#dc2626' : '#f8fafc';
+  const jerseyTrim = isRed ? '#111827' : '#0284c7';
+  const numFill = isRed ? '#ffffff' : '#0369a1';
+  const skin = arc.skinColor || '#f6c89f';
+  const hair = arc.hairColor || '#111827';
+  const hairHi = arc.hairHighlight || '#475569';
+
+  let hairBackSvg = '';
+  let hairFrontSvg = '';
+  if (arc.hairStyle === 'rukawa') {
+    hairBackSvg = `<path d="M56,78 L44,58 L58,54 L52,34 L72,40 L84,20 L100,32 L116,18 L126,38 L148,32 L140,54 L156,60 L144,78 Z" fill="${hair}"/>`;
+    hairFrontSvg = `
+      <path d="M58,66 L48,50 L66,46 L62,30 L82,38 L96,20 L108,36 L124,22 L132,42 L150,38 L142,64 C132,50 116,46 100,46 C84,46 68,50 58,66 Z" fill="${hair}"/>
+      <path d="M72,48 L78,76 L88,54 L98,80 L108,54 L120,75 L126,48 Z" fill="${hair}"/>
+      <path d="M76,38 L86,44 M114,36 L126,43" stroke="${hairHi}" stroke-width="3" stroke-linecap="round"/>
+    `;
+  } else if (arc.hairStyle === 'mitsui') {
+    hairBackSvg = `<path d="M58,80 C52,52 68,30 100,28 C132,30 148,52 142,80 Z" fill="${hair}"/>`;
+    hairFrontSvg = `
+      <path d="M58,72 C55,46 74,28 100,28 C126,28 145,46 142,72 C136,56 122,48 104,46 L98,66 L90,48 C75,50 64,58 58,72 Z" fill="${hair}"/>
+      <path d="M64,56 L72,74 L82,52 M136,56 L126,74 L116,52" fill="${hair}"/>
+      <path d="M75,38 Q92,33 102,38 M112,37 Q124,39 131,46" stroke="${hairHi}" stroke-width="3" fill="none" stroke-linecap="round"/>
+    `;
+  } else if (arc.hairStyle === 'sakuragi') {
+    hairFrontSvg = `
+      <path d="M62,74 C60,44 76,30 100,30 C124,30 140,44 138,74 C132,58 118,52 100,52 C82,52 68,58 62,74 Z" fill="${hair}"/>
+      <path d="M74,36 L78,30 L84,35 L90,28 L97,34 L103,27 L110,34 L117,29 L123,36" stroke="${hair}" stroke-width="4" stroke-linejoin="round" fill="none"/>
+      <path d="M80,39 Q100,34 120,39" stroke="${hairHi}" stroke-width="3" fill="none" stroke-linecap="round"/>
+    `;
+  } else if (arc.hairStyle === 'sendoh') {
+    hairBackSvg = `<path d="M60,72 L52,40 L74,42 L85,12 L102,32 L116,10 L128,40 L146,38 L140,72 Z" fill="${hair}"/>`;
+    hairFrontSvg = `
+      <path d="M60,64 L56,36 L78,38 L90,12 L104,32 L118,14 L128,38 L144,36 L140,64 Z" fill="${hair}"/>
+      <rect x="61" y="54" width="78" height="10" rx="4" fill="#ffffff" stroke="#0284c7" stroke-width="2"/>
+    `;
+  } else if (arc.hairStyle === 'uozumi') {
+    hairFrontSvg = `<path d="M63,72 L65,32 L135,32 L137,72 C125,55 75,55 63,72 Z" fill="${hair}"/>`;
+  } else {
+    hairFrontSvg = `
+      <path d="M60,70 C58,42 75,24 102,22 L118,16 L114,30 C134,34 142,50 140,70 C128,54 72,54 60,70 Z" fill="${hair}"/>
+    `;
+  }
+
+  let faceSvg = '';
+  const browColor = arc.hairStyle === 'sakuragi' ? '#991b1b' : '#0f172a';
+  if (mood === 'stunned') {
+    faceSvg = `
+      <circle cx="83" cy="78" r="7" fill="#ffffff" stroke="#0f172a" stroke-width="2.2"/>
+      <circle cx="117" cy="78" r="7" fill="#ffffff" stroke="#0f172a" stroke-width="2.2"/>
+      <circle cx="83" cy="78" r="2.2" fill="#0f172a"/>
+      <circle cx="117" cy="78" r="2.2" fill="#0f172a"/>
+      <path d="M74,66 L90,70 M126,66 L110,70" stroke="${browColor}" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="100" cy="96" rx="7" ry="5" fill="#7f1d1d"/>
+      <path d="M134,64 C139,72 139,79 134,81 C129,79 129,72 134,64 Z" fill="#38bdf8" stroke="#0284c7" stroke-width="1.5"/>
+    `;
+  } else if (mood === 'happy') {
+    faceSvg = `
+      <path d="M75,78 Q83,69 91,78" stroke="#0f172a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <path d="M109,78 Q117,69 125,78" stroke="#0f172a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <path d="M73,67 Q83,62 91,66 M109,66 Q117,62 127,67" stroke="${browColor}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+      <path d="M84,91 Q100,108 116,91 Z" fill="#dc2626" stroke="#0f172a" stroke-width="2"/>
+      <path d="M87,92 L113,92 L111,96 L89,96 Z" fill="#ffffff"/>
+    `;
+  } else if (mood === 'intense') {
+    faceSvg = `
+      <path d="M72,66 L92,73 M128,66 L108,73" stroke="${browColor}" stroke-width="4.2" stroke-linecap="round"/>
+      <ellipse cx="83" cy="79" rx="6.5" ry="5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+      <ellipse cx="117" cy="79" rx="6.5" ry="5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+      <circle cx="84" cy="79" r="3" fill="#0f172a"/>
+      <circle cx="116" cy="79" r="3" fill="#0f172a"/>
+      <circle cx="85.5" cy="77.5" r="1.2" fill="#ffffff"/>
+      <circle cx="117.5" cy="77.5" r="1.2" fill="#ffffff"/>
+      <path d="M86,93 L114,93 L110,103 L90,103 Z" fill="#991b1b" stroke="#0f172a" stroke-width="2"/>
+      <line x1="89" y1="95" x2="111" y2="95" stroke="#ffffff" stroke-width="2.5"/>
+    `;
+  } else {
+    if (arc.hairStyle === 'rukawa') {
+      faceSvg = `
+        <path d="M73,70 L92,73 M127,70 L108,73" stroke="${browColor}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M74,77 L92,78 L89,83 L76,82 Z" fill="#ffffff" stroke="#0f172a" stroke-width="1.8"/>
+        <path d="M126,77 L108,78 L111,83 L124,82 Z" fill="#ffffff" stroke="#0f172a" stroke-width="1.8"/>
+        <circle cx="84" cy="80" r="2.6" fill="#0f172a"/>
+        <circle cx="116" cy="80" r="2.6" fill="#0f172a"/>
+        <path d="M93,95 L107,94" stroke="#7c2d12" stroke-width="2.6" stroke-linecap="round"/>
+      `;
+    } else if (arc.hairStyle === 'mitsui') {
+      faceSvg = `
+        <path d="M73,69 L91,72 M127,69 L109,72" stroke="${browColor}" stroke-width="3.2" stroke-linecap="round"/>
+        <ellipse cx="83" cy="79" rx="6" ry="5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+        <ellipse cx="117" cy="79" rx="6" ry="5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+        <circle cx="83" cy="79" r="3" fill="#1e293b"/>
+        <circle cx="117" cy="79" r="3" fill="#1e293b"/>
+        <circle cx="84.5" cy="77.5" r="1.2" fill="#ffffff"/>
+        <circle cx="118.5" cy="77.5" r="1.2" fill="#ffffff"/>
+        <path d="M90,94 Q101,100 111,92" stroke="#7c2d12" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+      `;
+    } else {
+      faceSvg = `
+        <path d="M71,67 L92,72 M129,67 L108,72" stroke="${browColor}" stroke-width="4.5" stroke-linecap="round"/>
+        <ellipse cx="83" cy="79" rx="6.5" ry="5.5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+        <ellipse cx="117" cy="79" rx="6.5" ry="5.5" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+        <circle cx="84" cy="79" r="3" fill="#451a03"/>
+        <circle cx="116" cy="79" r="3" fill="#451a03"/>
+        <circle cx="85.5" cy="77.5" r="1.3" fill="#ffffff"/>
+        <circle cx="117.5" cy="77.5" r="1.3" fill="#ffffff"/>
+        <path d="M84,91 Q100,105 116,91 Z" fill="#ffffff" stroke="#0f172a" stroke-width="2.2"/>
+      `;
+    }
+  }
+
+  const scarSvg = arc.chinScar
+    ? `<path d="M86,102 L90,107 M85,105 L91,104" stroke="#b45309" stroke-width="1.7" stroke-linecap="round"/>`
+    : '';
+
+  const headGroup = `
+    <g>
+      ${hairBackSvg}
+      <circle cx="60" cy="80" r="8" fill="${skin}" stroke="#7c2d12" stroke-width="2"/>
+      <circle cx="140" cy="80" r="8" fill="${skin}" stroke="#7c2d12" stroke-width="2"/>
+      <path d="M62,68 C62,44 138,44 138,68 C139,94 124,111 100,111 C76,111 61,94 62,68 Z" fill="${skin}" stroke="#451a03" stroke-width="2.4"/>
+      <ellipse cx="74" cy="88" rx="6" ry="3" fill="#f87171" opacity="0.28"/>
+      <ellipse cx="126" cy="88" rx="6" ry="3" fill="#f87171" opacity="0.28"/>
+      ${faceSvg}
+      ${scarSvg}
+      ${hairFrontSvg}
+    </g>
+  `;
+
+  if (mode === 'head') {
+    return `
+      <svg viewBox="38 14 124 108" class="w-full h-full overflow-visible">
+        <path d="M72,120 L78,107 L122,107 L128,120 Z" fill="${jerseyBg}" stroke="${jerseyTrim}" stroke-width="2.5"/>
+        ${headGroup}
+      </svg>
+    `;
+  }
+
+  const drawSvgBall = (bx, by, r = 20) => `
+    <g>
+      <circle cx="${bx}" cy="${by}" r="${r}" fill="url(#${gradId})" stroke="#431407" stroke-width="2.4"/>
+      <path d="M${bx - r},${by} Q${bx},${by - 7} ${bx + r},${by}" stroke="#431407" stroke-width="2" fill="none"/>
+      <path d="M${bx},${by - r} Q${bx - 6},${by} ${bx},${by + r}" stroke="#431407" stroke-width="2" fill="none"/>
+    </g>
+  `;
+
+  let armsAndBallSvg = '';
+  let legsAccessorySvg = '';
+
+  if (arc.id === 'sf') {
+    // #11 流川：左前臂黑色護腕 + 單手托球姿勢
+    armsAndBallSvg = `
+      <path d="M73,124 L46,142 L54,154" stroke="${skin}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <rect x="42" y="135" width="15" height="12" rx="3" transform="rotate(-25 49 141)" fill="#0f172a" stroke="#ffffff" stroke-width="1.2"/>
+      <path d="M127,124 L148,148" stroke="${skin}" stroke-width="12" stroke-linecap="round" fill="none"/>
+      <circle cx="150" cy="150" r="7" fill="${skin}" stroke="#451a03" stroke-width="2"/>
+      ${drawSvgBall(44, 130, 20)}
+    `;
+  } else if (arc.id === 'sg') {
+    // #14 三井：左膝白色護膝 + 右手高舉比出三分手勢
+    armsAndBallSvg = `
+      <path d="M73,124 L48,142" stroke="${skin}" stroke-width="12" stroke-linecap="round" fill="none"/>
+      <path d="M127,122 L152,92" stroke="${skin}" stroke-width="12" stroke-linecap="round" fill="none"/>
+      <circle cx="154" cy="90" r="7" fill="${skin}" stroke="#451a03" stroke-width="1.8"/>
+      <path d="M150,85 L147,72 M155,84 L156,70 M160,86 L165,74" stroke="${skin}" stroke-width="3.6" stroke-linecap="round"/>
+      ${drawSvgBall(44, 146, 19)}
+    `;
+    legsAccessorySvg = `
+      <rect x="76" y="184" width="15" height="11" rx="3" fill="#ffffff" stroke="#dc2626" stroke-width="1.8"/>
+    `;
+  } else {
+    // #10 櫻木：雙手高舉戰斧灌籃姿勢 + 紅白高筒球鞋
+    armsAndBallSvg = `
+      <path d="M74,122 L52,90 L76,62" stroke="${skin}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M126,122 L148,90 L124,62" stroke="${skin}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      ${drawSvgBall(100, 34, 21)}
+    `;
+  }
+
+  return `
+    <svg viewBox="0 6 200 232" class="w-full h-full overflow-visible drop-shadow-[0_10px_14px_rgba(0,0,0,0.55)]">
+      <defs>
+        <radialGradient id="${gradId}" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#fdba74"/>
+          <stop offset="55%" stop-color="#ea580c"/>
+          <stop offset="100%" stop-color="#9a3412"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="100" cy="224" rx="46" ry="9" fill="rgba(0,0,0,0.45)"/>
+
+      <!-- 雙腿 -->
+      <line x1="85" y1="172" x2="82" y2="212" stroke="${skin}" stroke-width="12" stroke-linecap="round"/>
+      <line x1="115" y1="172" x2="118" y2="212" stroke="${skin}" stroke-width="12" stroke-linecap="round"/>
+      ${legsAccessorySvg}
+
+      <!-- 白色長襪與紅白高筒球鞋 -->
+      <rect x="76" y="198" width="12" height="12" rx="2" fill="#ffffff"/>
+      <rect x="112" y="198" width="12" height="12" rx="2" fill="#ffffff"/>
+      <path d="M68,218 C68,209 80,208 90,210 L90,221 L68,221 Z" fill="#ffffff" stroke="#111827" stroke-width="2"/>
+      <path d="M72,215 L88,215" stroke="#dc2626" stroke-width="3.5"/>
+      <path d="M110,210 C120,208 132,209 132,218 L132,221 L110,221 Z" fill="#ffffff" stroke="#111827" stroke-width="2"/>
+      <path d="M112,215 L128,215" stroke="#dc2626" stroke-width="3.5"/>
+
+      <!-- 球褲 -->
+      <path d="M72,155 L128,155 L133,182 L104,182 L100,170 L96,182 L67,182 Z" fill="${jerseyBg}" stroke="${jerseyTrim}" stroke-width="2.6"/>
+      <line x1="71" y1="157" x2="69" y2="181" stroke="#ffffff" stroke-width="3"/>
+      <line x1="129" y1="157" x2="131" y2="181" stroke="#ffffff" stroke-width="3"/>
+
+      <!-- 球衣與純數字號碼 -->
+      <path d="M74,112 L126,112 L129,158 L71,158 Z" fill="${jerseyBg}" stroke="${jerseyTrim}" stroke-width="2.6" stroke-linejoin="round"/>
+      <path d="M86,112 Q100,124 114,112" fill="none" stroke="#ffffff" stroke-width="3"/>
+      <line x1="79" y1="124" x2="121" y2="124" stroke="#ffffff" stroke-width="2" opacity="0.65"/>
+      <text x="100" y="150" text-anchor="middle" fill="${numFill}" stroke="${jerseyTrim}" stroke-width="0.9" font-size="25" font-weight="900" font-style="italic" font-family="sans-serif">${arc.number}</text>
+
+      ${armsAndBallSvg}
+      ${headGroup}
+    </svg>
+  `;
+}
+
+// 渲染選角主選單三張卡片
+let selectedArchetypeIndex = 0;
+
+function renderArchetypeCards() {
+  const container = document.getElementById('archetypeCards');
+  container.innerHTML = '';
+  ARCHETYPES.forEach((arc, idx) => {
+    const active = idx === selectedArchetypeIndex;
+    const card = document.createElement('div');
+    card.className = `group cursor-pointer rounded-2xl p-3.5 sm:p-4 transition-all duration-200 border-2 flex flex-col justify-between relative overflow-hidden ${
+      active
+        ? 'bg-gradient-to-b from-red-950/95 via-slate-900/95 to-slate-950 border-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.5)] scale-[1.015]'
+        : 'bg-slate-900/85 border-slate-700/80 hover:border-amber-300/60 opacity-90 hover:opacity-100 hover:-translate-y-1'
+    }`;
+
+    let barsHtml = '';
+    for (const [label, val] of Object.entries(arc.bars)) {
+      barsHtml += `
+        <div class="mb-1">
+          <div class="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+            <span class="text-slate-300">${label}</span>
+            <span class="text-amber-300">${val}</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div class="h-full rounded-full bg-gradient-to-r from-red-500 via-orange-400 to-yellow-300" style="width:${val}%"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    const svgArt = buildChibiSVG(arc, 'full', active ? 'intense' : 'normal', 'red');
+
+    card.innerHTML = `
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="px-2.5 py-0.5 rounded-md bg-red-600/95 text-xs font-black tracking-wider text-white shadow">#${arc.number} ${arc.roleTag}</span>
+          ${active
+            ? '<span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black shadow">已選王牌</span>'
+            : '<span class="text-xs text-slate-400 group-hover:text-amber-300 font-bold">點擊選擇</span>'}
+        </div>
+
+        <div class="flex items-center gap-3 my-1">
+          <div class="relative w-32 h-40 sm:w-36 sm:h-44 rounded-2xl bg-gradient-to-b from-slate-800/90 via-red-950/50 to-slate-950 border ${active ? 'border-amber-400/70' : 'border-slate-700/70'} flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
+            ${active ? '<div class="ult-aura-ring absolute w-36 h-36 rounded-full border-2 border-dashed border-amber-400/45 pointer-events-none"></div>' : ''}
+            <div class="w-full h-full chibi-idle group-hover:scale-105 transition-transform duration-200">${svgArt}</div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-lg sm:text-xl font-black comic-text text-white truncate">${arc.name}</h3>
+            <p class="text-[10px] text-amber-200/90 italic leading-snug mb-2">${arc.quote}</p>
+            <div>${barsHtml}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-1.5 pt-2 border-t border-slate-700/80 bg-black/35 rounded-xl p-2">
+        <div class="text-xs font-black text-amber-400">必殺技：${arc.ultName}</div>
+        <div class="text-[11px] text-slate-300 mt-0.5 leading-snug">${arc.ultDesc}</div>
+      </div>
+    `;
+    card.addEventListener('click', () => {
+      sfx.unlock();
+      sfx.dribble();
+      selectedArchetypeIndex = idx;
+      renderArchetypeCards();
+    });
+    container.appendChild(card);
+  });
+}
+renderArchetypeCards();
+
+// ============================================================================
+// 3. 半場 2.5D 世界座標與投影轉換系統
+// ============================================================================
+const COURT = {
+  halfW: 7.5,          // 半場左右寬 15m (-7.5 ~ +7.5)
+  length: 11.5,        // 底線 z=0 到中場線 z=11.5
+  hoopX: 0,
+  hoopY: 3.05,
+  hoopZ: 1.25,
+  rimRadius: 0.30,
+  backboardZ: 0.92,
+  keyHalfW: 2.45,
+  freeThrowZ: 5.8,
+  threeRadius: 6.75,
+  dunkRange: 2.85
+};
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let viewW = window.innerWidth;
+let viewH = window.innerHeight;
+
+const camera = {
+  zoom: 1.0,
+  targetZoom: 1.0,
+  shakeTime: 0,
+  shakeIntensity: 0,
+  slowMoTimer: 0
+};
+
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// 2.5D 斜俯視透視投影：底線籃框在畫面上方，外線在畫面下方，近大遠小
+function project3D(wx, wy, wz) {
+  const normZ = wz / COURT.length; // 0 (底線遠端) ~ 1 (中場近端)
+  const depthScale = 0.72 + normZ * 0.38;
+  const baseScale = Math.min(viewW / 18.2, viewH / 12.8) * camera.zoom;
+  const sc = baseScale * depthScale;
+
+  const courtTopY = viewH * 0.25;
+  const courtBottomY = viewH * 0.85;
+  const groundY = courtTopY + Math.pow(Math.max(0, normZ + 0.08), 0.92) * (courtBottomY - courtTopY) * 0.92;
+
+  let shakeX = 0;
+  let shakeY = 0;
+  if (camera.shakeTime > 0) {
+    shakeX = (Math.random() - 0.5) * camera.shakeIntensity;
+    shakeY = (Math.random() - 0.5) * camera.shakeIntensity;
+  }
+
+  return {
+    x: viewW * 0.5 + wx * sc + shakeX,
+    y: groundY - wy * sc * 0.92 + shakeY,
+    scale: sc
+  };
+}
+
+function triggerShake(intensity = 9, duration = 0.22) {
+  camera.shakeIntensity = intensity;
+  camera.shakeTime = duration;
+}
+
+function isThreePoint(x, z) {
+  const dist = Math.hypot(x - COURT.hoopX, z - COURT.hoopZ);
+  return dist >= COURT.threeRadius || Math.abs(x) >= 6.6;
+}
+
+// ============================================================================
+// 4. 球員、籃球、特效粒子與比賽狀態結構
+// ============================================================================
+class Player {
+  constructor(team, slot, arc, isHuman) {
+    this.team = team;
+    this.slot = slot;
+    this.arc = arc;
+    this.isHuman = isHuman;
+
+    this.x = 0;
+    this.y = 0;
+    this.z = 6;
+    this.vx = 0;
+    this.vz = 0;
+    this.vy = 0;
+    this.facing = Math.PI; // 朝向底線籃框 (z 減少方向)
+
+    this.hasBall = false;
+    this.chargeActive = false;
+    this.chargeTime = 0;
+    this.jumpTimer = 0;
+    this.crossoverTimer = 0;
+    this.stunTimer = 0;
+    this.happyTimer = 0;
+    this.stamina = 100;
+    this.stealCooldown = 0;
+    this.intenseDef = false;
+    this.ultEnergy = isHuman ? 40 : 20;
+    this.isDoingUlt = false;
+    this.dunkAnim = null;
+    this.aiDecisionTimer = 0;
+    this.aiTarget = { x: 0, z: 6 };
+
+    this.record = { pts: 0, reb: 0, blk: 0, stl: 0 };
+  }
+}
+
+const ball = {
+  x: 0,
+  y: 1.0,
+  z: 7.5,
+  vx: 0,
+  vy: 0,
+  vz: 0,
+  state: 'HELD', // HELD | PASS | SHOT | REBOUND | LOOSE
+  holder: null,
+  shooter: null,
+  passTarget: null,
+  shotData: null,
+  reboundSpot: null,
+  dribblePhase: 0,
+  trail: []
+};
+
+const game = {
+  state: 'MENU', // MENU | CHECK | PLAYING | CELEBRATE | OVER
+  scoreRed: 0,
+  scoreBlue: 0,
+  targetScore: 11,
+  clock: 120,
+  shotClock: 14,
+  overtime: false,
+  possessionTeam: 'red',
+  nextOffenseTeam: 'red',
+  mustClearThree: false,
+  clearFlashTimer: 0,
+  celebrateTimer: 0,
+  netSway: 0,
+  players: [],
+  humanPlayer: null,
+  particles: [],
+  floatTexts: []
+};
+
+// 浮動漫畫提示文字（Canvas 渲染）
+function spawnFloatText(text, wx, wy, wz, color = '#fde047', size = 20) {
+  game.floatTexts.push({
+    text,
+    x: wx,
+    y: wy,
+    z: wz,
+    vy: 1.35,
+    color,
+    size,
+    life: 1.15,
+    maxLife: 1.15
+  });
+}
+
+// 粒子火花特效
+function spawnParticles(wx, wy, wz, color = '#fbbf24', count = 18, speed = 4.2) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = (0.3 + Math.random() * 0.85) * speed;
+    game.particles.push({
+      x: wx,
+      y: wy,
+      z: wz,
+      vx: Math.cos(ang) * spd,
+      vy: (Math.random() * 0.9 + 0.3) * speed,
+      vz: Math.sin(ang) * spd,
+      color,
+      size: 2.5 + Math.random() * 3.5,
+      life: 0.45 + Math.random() * 0.35
+    });
+  }
+}
+
+// 頂部中央熱血彈出橫幅 (不含易亂碼特殊符號)
+function showHotBanner(mainText, subText = '', theme = 'gold') {
+  const container = document.getElementById('bannerContainer');
+  const palette = {
+    gold: 'from-amber-500 via-orange-500 to-red-600 border-yellow-200 text-white',
+    green: 'from-emerald-500 via-green-600 to-teal-700 border-emerald-200 text-white',
+    red: 'from-red-600 via-rose-600 to-red-900 border-red-200 text-white',
+    cyan: 'from-cyan-500 via-sky-600 to-blue-800 border-cyan-200 text-white'
+  };
+  const cls = palette[theme] || palette.gold;
+  container.innerHTML = `
+    <div class="banner-anim px-6 py-2 rounded-2xl bg-gradient-to-r ${cls} border-2 shadow-[0_8px_30px_rgba(0,0,0,0.65)] text-center whitespace-nowrap">
+      <div class="text-xl sm:text-3xl font-black comic-text tracking-wider">${mainText}</div>
+      ${subText ? `<div class="text-[11px] sm:text-xs font-extrabold tracking-widest opacity-95">${subText}</div>` : ''}
+    </div>
+  `;
+}
+
+function addUltEnergy(p, amount) {
+  if (p.isDoingUlt) return;
+  p.ultEnergy = Math.min(100, p.ultEnergy + amount);
+}
+
+// ============================================================================
+// 5. 比賽初始化與回合開球配置
+// ============================================================================
+function initMatch() {
+  const chosenArc = ARCHETYPES[selectedArchetypeIndex];
+  const otherArcs = ARCHETYPES.filter((_, idx) => idx !== selectedArchetypeIndex);
+
+  game.players = [];
+  const redHuman = new Player('red', 0, chosenArc, true);
+  const redMate1 = new Player('red', 1, otherArcs[0], false);
+  const redMate2 = new Player('red', 2, otherArcs[1], false);
+
+  // 藍隊 3 名特色卡通對手 (陵南風：#7 仙道刺蝟頭+白頭帶、#4 魚住方正平頭、#13 福田飛機頭+護膝)
+  const blueArcs = [
+    {
+      ...ARCHETYPES[0],
+      number: '7',
+      name: '仙道・王牌鋒衛',
+      shortName: '仙道',
+      hairStyle: 'sendoh',
+      hairColor: '#0f172a',
+      hairHighlight: '#38bdf8',
+      skinColor: '#fbd3b6',
+      headband: true,
+      armband: false
+    },
+    {
+      ...ARCHETYPES[2],
+      number: '4',
+      name: '魚住・禁區巨塔',
+      shortName: '魚住',
+      hairStyle: 'uozumi',
+      hairColor: '#1e293b',
+      hairHighlight: '#64748b',
+      skinColor: '#eab68c',
+      headband: false,
+      armband: false
+    },
+    {
+      ...ARCHETYPES[1],
+      number: '13',
+      name: '福田・得分前鋒',
+      shortName: '福田',
+      hairStyle: 'pompadour',
+      hairColor: '#78350f',
+      hairHighlight: '#d97706',
+      skinColor: '#f6c89f',
+      headband: false,
+      kneeBand: true
+    }
+  ];
+
+  const blue0 = new Player('blue', 0, blueArcs[0], false);
+  const blue1 = new Player('blue', 1, blueArcs[1], false);
+  const blue2 = new Player('blue', 2, blueArcs[2], false);
+
+  game.players.push(redHuman, redMate1, redMate2, blue0, blue1, blue2);
+  game.humanPlayer = redHuman;
+
+  game.scoreRed = 0;
+  game.scoreBlue = 0;
+  game.clock = 120;
+  game.overtime = false;
+  game.nextOffenseTeam = 'red';
+  game.particles = [];
+  game.floatTexts = [];
+  lastHudPortraitKey = '';
+  lastTeammateHolderId = '';
+
+  setupCheckBall('red');
+  renderTeammateMiniAvatars();
+}
+
+function setupCheckBall(offenseTeam) {
+  game.state = 'PLAYING';
+  game.possessionTeam = offenseTeam;
+  game.mustClearThree = false;
+  game.shotClock = 14;
+  camera.targetZoom = 1.0;
+
+  const offPlayers = game.players.filter(p => p.team === offenseTeam);
+  const defPlayers = game.players.filter(p => p.team !== offenseTeam);
+
+  // 進攻站位：弧頂發球者 + 兩翼跑位
+  const offPos = [
+    { x: 0, z: 8.4 },
+    { x: -4.8, z: 6.2 },
+    { x: 4.8, z: 6.2 }
+  ];
+  const defPos = [
+    { x: 0, z: 6.6 },
+    { x: -3.5, z: 4.8 },
+    { x: 3.5, z: 4.8 }
+  ];
+
+  offPlayers.forEach((p, idx) => {
+    p.x = offPos[idx].x;
+    p.z = offPos[idx].z;
+    p.y = 0;
+    p.vx = p.vz = p.vy = 0;
+    p.facing = Math.PI;
+    p.hasBall = false;
+    p.chargeActive = false;
+    p.dunkAnim = null;
+    p.isDoingUlt = false;
+    p.stunTimer = 0;
+  });
+
+  defPlayers.forEach((p, idx) => {
+    p.x = defPos[idx].x;
+    p.z = defPos[idx].z;
+    p.y = 0;
+    p.vx = p.vz = p.vy = 0;
+    p.facing = 0;
+    p.hasBall = false;
+    p.chargeActive = false;
+    p.dunkAnim = null;
+    p.isDoingUlt = false;
+    p.stunTimer = 0;
+  });
+
+  const ballHandler = offPlayers[0];
+  giveBallTo(ballHandler, false);
+  sfx.whistle();
+  showHotBanner(offenseTeam === 'red' ? '湘北紅隊 球權進攻！' : '陵南藍隊 球權進攻！', '先得 11 分或時間結束領先者獲勝', offenseTeam === 'red' ? 'gold' : 'cyan');
+}
+
+function giveBallTo(p, fromClearCheck = true) {
+  game.players.forEach(pl => {
+    pl.hasBall = false;
+    pl.chargeActive = false;
+  });
+  p.hasBall = true;
+  ball.state = 'HELD';
+  ball.holder = p;
+  ball.passTarget = null;
+  ball.shotData = null;
+  ball.reboundSpot = null;
+
+  if (fromClearCheck) {
+    if (p.team !== game.possessionTeam) {
+      // 攻守轉換！必須出三分線洗球
+      game.possessionTeam = p.team;
+      game.shotClock = 14;
+      if (!isThreePoint(p.x, p.z)) {
+        game.mustClearThree = true;
+        spawnFloatText('需出三分線洗球！', p.x, 2.2, p.z, '#22d3ee', 18);
+      } else {
+        game.mustClearThree = false;
+      }
+    } else if (game.mustClearThree && isThreePoint(p.x, p.z)) {
+      completeClearBall(p);
+    }
+  }
+}
+
+function completeClearBall(p) {
+  game.mustClearThree = false;
+  game.clearFlashTimer = 0.75;
+  game.shotClock = 14;
+  sfx.squeak();
+  spawnFloatText('洗球成功！可進攻籃框', p.x, 2.3, p.z, '#4ade80', 19);
+}
+
+// ============================================================================
+// 6. 鍵盤與觸控虛擬搖桿輸入控制
+// ============================================================================
+const keys = {};
+const joyInput = { active: false, dx: 0, dy: 0, pointerId: null };
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  const code = e.code;
+  keys[code] = true;
+  sfx.unlock();
+
+  if (game.state !== 'PLAYING') return;
+  if (code === 'KeyJ') onActionJ(true);
+  else if (code === 'KeyK') onActionK();
+  else if (code === 'KeyL') onActionL(true);
+  else if (code === 'Space') {
+    e.preventDefault();
+    onActionUlt();
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  const code = e.code;
+  keys[code] = false;
+  if (code === 'KeyJ') onActionJ(false);
+  else if (code === 'KeyL') onActionL(false);
+});
+
+// 虛擬搖桿觸控與滑鼠綁定
+const joyZone = document.getElementById('joystickZone');
+const joyKnob = document.getElementById('joystickKnob');
+
+function updateJoystickByClient(clientX, clientY) {
+  const rect = joyZone.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const maxR = rect.width * 0.38;
+  let dx = clientX - cx;
+  let dy = clientY - cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist > maxR) {
+    dx = (dx / dist) * maxR;
+    dy = (dy / dist) * maxR;
+  }
+  joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  joyInput.dx = dx / maxR;
+  joyInput.dy = dy / maxR;
+}
+
+joyZone.addEventListener('pointerdown', (e) => {
+  sfx.unlock();
+  joyInput.active = true;
+  joyInput.pointerId = e.pointerId;
+  joyZone.setPointerCapture(e.pointerId);
+  updateJoystickByClient(e.clientX, e.clientY);
+});
+joyZone.addEventListener('pointermove', (e) => {
+  if (!joyInput.active || e.pointerId !== joyInput.pointerId) return;
+  updateJoystickByClient(e.clientX, e.clientY);
+});
+function resetJoystick(e) {
+  if (e && joyInput.pointerId !== null && e.pointerId !== joyInput.pointerId) return;
+  joyInput.active = false;
+  joyInput.pointerId = null;
+  joyInput.dx = 0;
+  joyInput.dy = 0;
+  joyKnob.style.transform = 'translate(0px, 0px)';
+}
+joyZone.addEventListener('pointerup', resetJoystick);
+joyZone.addEventListener('pointercancel', resetJoystick);
+
+// 右下角圓形技能按鈕綁定
+function bindHoldBtn(id, downFn, upFn) {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    sfx.unlock();
+    downFn();
+  });
+  el.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    if (upFn) upFn();
+  });
+  el.addEventListener('pointerleave', () => {
+    if (upFn) upFn();
+  });
+  el.addEventListener('pointercancel', () => {
+    if (upFn) upFn();
+  });
+}
+
+bindHoldBtn('btnSkillJ', () => onActionJ(true), () => onActionJ(false));
+bindHoldBtn('btnSkillK', () => onActionK(), null);
+bindHoldBtn('btnSkillL', () => onActionL(true), () => onActionL(false));
+bindHoldBtn('btnSkillUlt', () => onActionUlt(), null);
+
+function getHumanMoveVector() {
+  let mx = 0;
+  let mz = 0;
+  if (keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
+  if (keys['KeyW'] || keys['ArrowUp']) mz -= 1;   // 往畫面上方籃框推進 (z 減小)
+  if (keys['KeyS'] || keys['ArrowDown']) mz += 1; // 往畫面下方外線拉開 (z 增加)
+
+  if (joyInput.active) {
+    mx += joyInput.dx;
+    mz += joyInput.dy;
+  }
+  const len = Math.hypot(mx, mz);
+  if (len > 1) {
+    mx /= len;
+    mz /= len;
+  }
+  return { mx, mz, mag: Math.min(1, len) };
+}
+
+// ============================================================================
+// 7. 進攻與防守核心技能邏輯（投籃綠區、灌籃、干擾、傳球、突破、火鍋、籃板、大招）
+// ============================================================================
+function getNearestOpponent(p) {
+  let nearest = null;
+  let minDist = Infinity;
+  game.players.forEach(other => {
+    if (other.team !== p.team) {
+      const d = Math.hypot(other.x - p.x, other.z - p.z);
+      if (d < minDist) {
+        minDist = d;
+        nearest = other;
+      }
+    }
+  });
+  return { defender: nearest, dist: minDist };
+}
+
+// 計算防守扇形干擾等級
+function evaluateContest(shooter) {
+  let maxPenalty = 0;
+  let level = 'OPEN'; // OPEN | LIGHT | HEAVY
+
+  game.players.forEach(def => {
+    if (def.team === shooter.team || def.stunTimer > 0) return;
+    const dx = shooter.x - def.x;
+    const dz = shooter.z - def.z;
+    const dist = Math.hypot(dx, dz);
+    const maxRadius = def.intenseDef ? 2.55 : 2.15;
+    if (dist <= maxRadius) {
+      const angleToShooter = Math.atan2(dx, dz);
+      let angleDiff = Math.abs(angleToShooter - def.facing);
+      if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+
+      if (angleDiff < 1.15 || dist < 1.15) {
+        const jumpBonus = def.y > 0.25 ? 0.16 : 0;
+        const stanceBonus = def.intenseDef ? 0.10 : 0;
+        if (dist < 1.28) {
+          maxPenalty = Math.max(maxPenalty, 0.42 + jumpBonus + stanceBonus);
+          level = 'HEAVY';
+        } else if (level !== 'HEAVY') {
+          maxPenalty = Math.max(maxPenalty, 0.18 + jumpBonus * 0.5 + stanceBonus * 0.5);
+          level = 'LIGHT';
+        }
+      }
+    }
+  });
+
+  return { level, penalty: maxPenalty };
+}
+
+// 按鍵 J：投籃蓄力 / 籃下灌籃 / 防守火鍋與籃板
+function onActionJ(isDown) {
+  const p = game.humanPlayer;
+  if (!p || game.state !== 'PLAYING' || p.stunTimer > 0 || p.dunkAnim) return;
+
+  if (isDown) {
+    if (p.hasBall) {
+      if (game.mustClearThree) {
+        sfx.clank();
+        spawnFloatText('請先運球或傳出三分線洗球！', p.x, 2.4, p.z, '#22d3ee', 19);
+        return;
+      }
+      const distHoop = Math.hypot(p.x - COURT.hoopX, p.z - COURT.hoopZ);
+      const moveVec = getHumanMoveVector();
+      // 靠近籃下且移動中（或禁區霸主）直接觸發霸氣灌籃！
+      if (distHoop <= COURT.dunkRange && (moveVec.mag > 0.25 || p.arc.stats.dunk >= 0.9)) {
+        startDunk(p, false);
+      } else {
+        p.chargeActive = true;
+        p.chargeTime = 0;
+      }
+    } else {
+      // 無球時按 J：跳起封蓋火鍋或爭搶籃板！
+      triggerJumpBlockOrRebound(p);
+    }
+  } else {
+    if (p.hasBall && p.chargeActive) {
+      releaseJumpShot(p, false);
+    }
+  }
+}
+
+// 按鍵 K：精準傳球 或 防守抄截
+function onActionK() {
+  const p = game.humanPlayer;
+  if (!p || game.state !== 'PLAYING' || p.stunTimer > 0 || p.dunkAnim) return;
+
+  if (p.hasBall) {
+    p.chargeActive = false;
+    const mates = game.players.filter(m => m.team === p.team && m !== p);
+    let target = mates[0];
+    if (game.mustClearThree) {
+      const outsideMate = mates.find(m => isThreePoint(m.x, m.z));
+      if (outsideMate) target = outsideMate;
+    } else {
+      let bestScore = -999;
+      mates.forEach(m => {
+        const { dist } = getNearestOpponent(m);
+        const hoopDist = Math.hypot(m.x - COURT.hoopX, m.z - COURT.hoopZ);
+        const s = dist * 1.6 - hoopDist * 0.35;
+        if (s > bestScore) {
+          bestScore = s;
+          target = m;
+        }
+      });
+    }
+    if (target) executePass(p, target);
+  } else {
+    attemptSteal(p);
+  }
+}
+
+// 按鍵 L：進攻橫向突破 Cross-over / 防守壓低重心盯防與籃板卡位
+function onActionL(isDown) {
+  const p = game.humanPlayer;
+  if (!p) return;
+  if (!isDown) {
+    p.intenseDef = false;
+    return;
+  }
+  if (game.state !== 'PLAYING' || p.stunTimer > 0 || p.dunkAnim) return;
+
+  if (p.hasBall) {
+    if (p.crossoverTimer <= 0) {
+      performCrossover(p);
+    }
+  } else {
+    p.intenseDef = true;
+    if (ball.state === 'REBOUND' || ball.state === 'SHOT') {
+      performBoxOut(p);
+    }
+  }
+}
+
+// Space：施放覺醒必殺大招 + 全螢幕漫畫 Cut-In
+function onActionUlt() {
+  const p = game.humanPlayer;
+  if (!p || game.state !== 'PLAYING' || p.stunTimer > 0 || p.dunkAnim) return;
+  if (p.ultEnergy < 100) {
+    spawnFloatText(`覺醒能量 ${Math.floor(p.ultEnergy)}%`, p.x, 2.2, p.z, '#fbbf24', 16);
+    return;
+  }
+  if (!p.hasBall) {
+    spawnFloatText('需持球發動覺醒必殺！', p.x, 2.2, p.z, '#fbbf24', 17);
+    return;
+  }
+  if (game.mustClearThree) {
+    spawnFloatText('請先出三分線洗球！', p.x, 2.3, p.z, '#22d3ee', 18);
+    return;
+  }
+  activateUltimateSkill(p);
+}
+
+// 灌籃動作開始
+function startDunk(p, isUlt) {
+  p.chargeActive = false;
+  p.dunkAnim = {
+    startX: p.x,
+    startZ: p.z,
+    t: 0,
+    dur: isUlt ? 0.72 : 0.54,
+    isUlt
+  };
+  sfx.squeak();
+  spawnParticles(p.x, 0.1, p.z, isUlt ? '#facc15' : '#fb923c', isUlt ? 24 : 12, 4.5);
+  spawnFloatText(isUlt ? '飛人覺醒暴扣！' : '霸氣起飛灌籃！', p.x, 2.4, p.z, '#fb923c', 20);
+}
+
+// 投籃蓄力放開判定
+function releaseJumpShot(p, isUltShot, forcedThree = false) {
+  p.chargeActive = false;
+  p.jumpTimer = 0.42;
+  p.vy = 4.2;
+
+  const is3pt = forcedThree || isThreePoint(p.x, p.z);
+  const points = is3pt ? 3 : 2;
+  const baseStat = is3pt ? p.arc.stats.threePt : p.arc.stats.midPt;
+
+  // 綠區中心在 0.66
+  const greenCenter = 0.66;
+  const halfGreen = p.arc.stats.greenWidth * 0.5;
+  const diff = Math.abs(p.chargeTime - greenCenter);
+  const isPerfectGreen = isUltShot || (p.isHuman ? diff <= halfGreen : Math.random() < 0.35);
+
+  const contest = isUltShot ? { level: 'OPEN', penalty: 0 } : evaluateContest(p);
+
+  // 顯示干擾等級與完美出手提示
+  if (contest.level === 'HEAVY') {
+    spawnFloatText('嚴重干擾！', p.x, 2.6, p.z, '#ef4444', 21);
+    if (p.isHuman) showHotBanner('嚴重干擾！', '對手貼身封阻視線', 'red');
+  } else if (contest.level === 'LIGHT') {
+    spawnFloatText('輕微干擾', p.x, 2.5, p.z, '#facc15', 19);
+  } else {
+    spawnFloatText(isPerfectGreen ? '完美綠區・大空檔！' : '空檔出手！', p.x, 2.5, p.z, '#4ade80', 20);
+  }
+
+  let prob = baseStat - contest.penalty;
+  if (isPerfectGreen) prob += 0.24;
+  else if (p.isHuman && diff > halfGreen * 2.1) prob -= 0.22;
+  if (isUltShot) prob = 0.98;
+  prob = Math.max(0.08, Math.min(0.98, prob));
+
+  const willMake = Math.random() < prob;
+  launchBallShot(p, points, willMake, isUltShot);
+}
+
+function launchBallShot(shooter, points, willMake, isUltShot) {
+  shooter.hasBall = false;
+  ball.state = 'SHOT';
+  ball.holder = null;
+  ball.shooter = shooter;
+  ball.trail = [];
+
+  const startX = shooter.x;
+  const startY = shooter.y + 1.85;
+  const startZ = shooter.z;
+  const dist = Math.hypot(startX - COURT.hoopX, startZ - COURT.hoopZ);
+  const flightDur = Math.max(0.58, Math.min(1.05, 0.48 + dist * 0.065));
+
+  ball.x = startX;
+  ball.y = startY;
+  ball.z = startZ;
+  ball.shotData = {
+    startX,
+    startY,
+    startZ,
+    targetX: COURT.hoopX + (willMake ? 0 : (Math.random() > 0.5 ? 0.26 : -0.26)),
+    targetY: COURT.hoopY,
+    targetZ: COURT.hoopZ + (willMake ? 0 : (Math.random() - 0.3) * 0.25),
+    t: 0,
+    dur: flightDur,
+    arcHeight: Math.max(4.4, COURT.hoopY + 1.4 + dist * 0.22 + (isUltShot ? 1.1 : 0)),
+    points,
+    willMake,
+    isUltShot
+  };
+}
+
+// 傳球飛行
+function executePass(fromP, toP) {
+  fromP.hasBall = false;
+  ball.state = 'PASS';
+  ball.holder = null;
+  ball.passTarget = toP;
+  ball.x = fromP.x;
+  ball.y = 1.25;
+  ball.z = fromP.z;
+  sfx.dribble();
+}
+
+// 變向突破 Cross-over 與晃倒判定
+function performCrossover(p) {
+  p.crossoverTimer = 0.36;
+  p.chargeActive = false;
+  p.stamina = Math.max(15, p.stamina - 12);
+  sfx.squeak();
+  sfx.dribble();
+
+  const moveVec = p.isHuman ? getHumanMoveVector() : { mx: Math.random() > 0.5 ? 1 : -1, mz: -0.3, mag: 1 };
+  let dirX = moveVec.mag > 0.15 ? moveVec.mx : (p.x > 0 ? -1 : 1);
+  let dirZ = moveVec.mag > 0.15 ? moveVec.mz : -0.35;
+  const len = Math.hypot(dirX, dirZ) || 1;
+  p.vx = (dirX / len) * p.arc.stats.speed * 1.95;
+  p.vz = (dirZ / len) * p.arc.stats.speed * 1.75;
+
+  spawnParticles(p.x, 0.1, p.z, '#38bdf8', 12, 3.5);
+  spawnFloatText('急速變向突破！', p.x, 2.2, p.z, '#38bdf8', 18);
+
+  // 檢查是否晃倒貼身防守者
+  const { defender, dist } = getNearestOpponent(p);
+  if (defender && dist < 2.05 && defender.stunTimer <= 0) {
+    const ankleBreakChance = defender.intenseDef ? 0.38 : 0.26;
+    if (Math.random() < ankleBreakChance) {
+      defender.stunTimer = 1.35;
+      defender.vx = -dirX * 2.2;
+      defender.vz = 1.5;
+      triggerShake(7, 0.18);
+      addUltEnergy(p, 14);
+      spawnFloatText('腳踝終結・晃倒！', defender.x, 2.1, defender.z, '#facc15', 21);
+      showHotBanner('精彩突破晃倒對手！', `${p.arc.shortName} 甩開防守`, 'gold');
+    }
+  }
+}
+
+// 抄截判定
+function attemptSteal(p) {
+  if (p.stealCooldown > 0) return;
+  p.stealCooldown = 0.65;
+  sfx.squeak();
+
+  if (ball.state === 'HELD' && ball.holder && ball.holder.team !== p.team) {
+    const target = ball.holder;
+    const dist = Math.hypot(target.x - p.x, target.z - p.z);
+    if (dist < 1.75 && !target.dunkAnim && !target.isDoingUlt) {
+      const chance = 0.24 * p.arc.stats.steal + (target.crossoverTimer > 0 ? -0.1 : 0.06);
+      if (Math.random() < chance) {
+        p.record.stl += 1;
+        p.happyTimer = 1.4;
+        target.stunTimer = 0.55;
+        addUltEnergy(p, 20);
+        sfx.blockSlap();
+        triggerShake(7, 0.16);
+        spawnParticles(target.x, 1.0, target.z, '#38bdf8', 16, 4.2);
+        giveBallTo(p, true);
+        showHotBanner('精準抄截！', `${p.arc.name} 斷球快攻`, 'cyan');
+        return;
+      }
+    }
+  }
+  spawnFloatText('伸手抄截', p.x, 2.0, p.z, '#94a3b8', 15);
+}
+
+// 卡位推人 (Box Out)
+function performBoxOut(p) {
+  const { defender, dist } = getNearestOpponent(p);
+  if (defender && dist < 1.65) {
+    const pushAngle = Math.atan2(defender.x - p.x, defender.z - p.z);
+    defender.x += Math.sin(pushAngle) * 0.42;
+    defender.z += Math.cos(pushAngle) * 0.42;
+    spawnFloatText('強力卡位！', p.x, 2.0, p.z, '#34d399', 16);
+  }
+}
+
+// 起跳蓋火鍋 或 爭搶籃板球
+function triggerJumpBlockOrRebound(p) {
+  if (p.y > 0.05 || p.jumpTimer > 0) return;
+  p.jumpTimer = 0.52;
+  p.vy = 4.9 + p.arc.stats.rebound * 1.1;
+  sfx.squeak();
+
+  // 1. 檢查是否能蓋火鍋 (對手剛投出球在上升段 或 對手正在灌籃)
+  if (ball.state === 'SHOT' && ball.shotData && ball.shooter && ball.shooter.team !== p.team) {
+    if (ball.shotData.t < ball.shotData.dur * 0.36 && !ball.shotData.isUltShot) {
+      const dist = Math.hypot(p.x - ball.x, p.z - ball.z);
+      if (dist < 1.95 && Math.random() < p.arc.stats.block * 0.85) {
+        executeBlockSuccess(p, ball.shooter);
+        return;
+      }
+    }
+  }
+
+  // 對手正在灌籃時抓準時機封蓋
+  const dunker = game.players.find(pl => pl.team !== p.team && pl.dunkAnim && !pl.dunkAnim.isUlt);
+  if (dunker) {
+    const dist = Math.hypot(p.x - dunker.x, p.z - dunker.z);
+    if (dist < 1.9 && dunker.dunkAnim.t > 0.15 && dunker.dunkAnim.t < 0.46) {
+      if (Math.random() < p.arc.stats.block * 0.68) {
+        dunker.dunkAnim = null;
+        executeBlockSuccess(p, dunker);
+        return;
+      }
+    }
+  }
+
+  // 2. 檢查是否搶下空中籃板球
+  if (ball.state === 'REBOUND' || ball.state === 'LOOSE') {
+    const dist = Math.hypot(p.x - ball.x, p.z - ball.z);
+    if (dist < 1.95 && ball.y < 3.25) {
+      secureRebound(p);
+    }
+  }
+}
+
+function executeBlockSuccess(blocker, shooter) {
+  sfx.blockSlap();
+  triggerShake(14, 0.3);
+  blocker.record.blk += 1;
+  blocker.happyTimer = 1.8;
+  shooter.stunTimer = 0.75;
+  shooter.hasBall = false;
+  addUltEnergy(blocker, 25);
+
+  ball.state = 'REBOUND';
+  ball.holder = null;
+  ball.shotData = null;
+  const outAngle = Math.random() * Math.PI - Math.PI / 2;
+  ball.vx = Math.sin(outAngle) * 3.8;
+  ball.vz = 2.8 + Math.random() * 2.2;
+  ball.vy = 3.2;
+  ball.reboundSpot = {
+    x: Math.max(-5.5, Math.min(5.5, ball.x + ball.vx * 0.65)),
+    z: Math.max(1.8, Math.min(8.5, ball.z + ball.vz * 0.65))
+  };
+
+  spawnParticles(blocker.x, 2.2, blocker.z, '#ef4444', 28, 5.8);
+  spawnFloatText('火鍋封阻！', blocker.x, 2.8, blocker.z, '#f87171', 24);
+  showHotBanner('火鍋封阻！', `${blocker.arc.name} 隻手遮天`, 'red');
+}
+
+function secureRebound(p) {
+  sfx.blockSlap();
+  triggerShake(8, 0.18);
+  ball.reboundSpot = null;
+  ball.shotData = null;
+  p.record.reb += 1;
+  p.happyTimer = 1.4;
+  addUltEnergy(p, 16);
+
+  spawnParticles(p.x, p.y + 1.8, p.z, '#fbbf24', 18, 4.2);
+  spawnFloatText('籃板球！', p.x, 2.7, p.z, '#fde047', 23);
+  showHotBanner('強勢籃板球！', `${p.arc.name} 制霸禁區`, 'gold');
+  giveBallTo(p, true);
+}
+
+// 必殺大招全螢幕漫畫 Cut-In 特寫橫幅與技能發動
+function triggerUltCutInBanner(p) {
+  const overlay = document.getElementById('ultCutInOverlay');
+  const bar = document.getElementById('ultCutInBar');
+  const portraitBox = document.getElementById('ultCutInPortrait');
+  const charTag = document.getElementById('ultCutInChar');
+  const skillTxt = document.getElementById('ultCutInSkill');
+
+  const isRed = p.team === 'red';
+  bar.className = `cutin-bar relative w-[115%] h-36 sm:h-48 border-y-4 border-yellow-200 shadow-[0_0_60px_rgba(245,158,11,0.95)] flex items-center justify-center px-6 sm:px-16 overflow-hidden ${
+    isRed
+      ? 'bg-gradient-to-r from-red-950 via-red-600 to-amber-500'
+      : 'bg-gradient-to-r from-slate-950 via-sky-700 to-indigo-500'
+  }`;
+
+  portraitBox.innerHTML = buildChibiSVG(p.arc, 'head', 'intense', p.team);
+  charTag.textContent = `#${p.arc.number} ${p.arc.name}・覺醒必殺`;
+  skillTxt.textContent = `${p.arc.ultName}！`;
+
+  overlay.classList.remove('hidden');
+  bar.style.animation = 'none';
+  void bar.offsetWidth;
+  bar.style.animation = '';
+
+  setTimeout(() => {
+    overlay.classList.add('hidden');
+  }, 1450);
+}
+
+function activateUltimateSkill(p) {
+  p.ultEnergy = 0;
+  p.isDoingUlt = true;
+  p.happyTimer = 1.6;
+  sfx.ultAwaken();
+  triggerShake(13, 0.35);
+  camera.slowMoTimer = 0.92;
+  camera.targetZoom = 1.16;
+
+  spawnParticles(p.x, 1.0, p.z, '#facc15', 34, 6.5);
+  triggerUltCutInBanner(p);
+  showHotBanner(`${p.arc.ultName}！`, `${p.arc.name} 覺醒必殺技`, 'gold');
+
+  if (p.arc.id === 'sg') {
+    // #14 三井：極限後撤至三分線外投出必殺火焰三分
+    const dirAngle = Math.atan2(p.x - COURT.hoopX, Math.max(1.5, p.z - COURT.hoopZ));
+    p.x = Math.max(-6.8, Math.min(6.8, COURT.hoopX + Math.sin(dirAngle) * 7.25));
+    p.z = Math.max(2.5, Math.min(10.5, COURT.hoopZ + Math.cos(dirAngle) * 7.25));
+    releaseJumpShot(p, true, true);
+    p.isDoingUlt = false;
+  } else if (p.arc.id === 'pf') {
+    // #10 櫻木：罰球線遠距離旱地拔蔥戰斧飛扣
+    startDunk(p, true);
+  } else {
+    // #11 流川：三分線內換手飛人暴扣，三分線外極限後仰跳投
+    if (!isThreePoint(p.x, p.z)) {
+      startDunk(p, true);
+    } else {
+      releaseJumpShot(p, true, true);
+      p.isDoingUlt = false;
+    }
+  }
+}
+
+// 得分與慶祝處理
+function handleScore(shooter, points, styleLabel) {
+  sfx.cheer();
+  game.netSway = 1.0;
+
+  if (shooter.team === 'red') {
+    game.scoreRed += points;
+  } else {
+    game.scoreBlue += points;
+  }
+  shooter.record.pts += points;
+  shooter.happyTimer = 2.2;
+  addUltEnergy(shooter, 18);
+
+  game.players.forEach(p => {
+    if (p.team === shooter.team) {
+      p.happyTimer = 1.8;
+      addUltEnergy(p, 8);
+    } else {
+      addUltEnergy(p, 12);
+    }
+  });
+
+  spawnParticles(COURT.hoopX, COURT.hoopY, COURT.hoopZ, points === 3 ? '#38bdf8' : '#facc15', 32, 5.5);
+  showHotBanner(`${styleLabel} +${points}分！`, `${shooter.arc.name} 精彩得分`, shooter.team === 'red' ? 'gold' : 'cyan');
+
+  // 檢查是否達成 11 分獲勝或黃金得分結束
+  if (game.scoreRed >= game.targetScore || game.scoreBlue >= game.targetScore || game.overtime) {
+    game.state = 'CELEBRATE';
+    game.celebrateTimer = 1.6;
+    setTimeout(() => finishMatch(), 1550);
+    return;
+  }
+
+  // 交換球權重新發球
+  game.state = 'CELEBRATE';
+  game.celebrateTimer = 1.55;
+  game.nextOffenseTeam = shooter.team === 'red' ? 'blue' : 'red';
+}
+
+function finishMatch() {
+  if (game.state === 'OVER') return;
+  game.state = 'OVER';
+  sfx.whistle();
+
+  const redWin = game.scoreRed >= game.scoreBlue;
+  document.getElementById('resTitle').textContent = redWin ? '湘北紅隊 熱血獲勝！' : '陵南藍隊 逆轉獲勝！';
+  document.getElementById('resTitle').className = `text-3xl sm:text-4xl font-black comic-text mb-1 ${redWin ? 'text-yellow-400' : 'text-sky-400'}`;
+  document.getElementById('resScoreLine').textContent = `湘北紅 ${game.scoreRed} : ${game.scoreBlue} 陵南藍`;
+
+  let mvpPlayer = game.players[0];
+  let bestScore = -1;
+  game.players.forEach(p => {
+    const rating = p.record.pts * 2.2 + p.record.reb * 1.8 + p.record.blk * 2.5 + p.record.stl * 2.5 + (p.team === (redWin ? 'red' : 'blue') ? 3 : 0);
+    if (rating > bestScore) {
+      bestScore = rating;
+      mvpPlayer = p;
+    }
+  });
+
+  document.getElementById('mvpSvgBox').innerHTML = buildChibiSVG(mvpPlayer.arc, 'full', 'happy', mvpPlayer.team);
+  document.getElementById('mvpNameTitle').textContent = `#${mvpPlayer.arc.number} ${mvpPlayer.arc.name}`;
+  document.getElementById('mvpStatSummary').textContent = `${mvpPlayer.record.pts} 得分 ｜ ${mvpPlayer.record.reb} 籃板 ｜ ${mvpPlayer.record.blk} 火鍋 ｜ ${mvpPlayer.record.stl} 抄截`;
+
+  const tbody = document.getElementById('statsTableBody');
+  tbody.innerHTML = game.players.map(p => {
+    const isMvp = p === mvpPlayer;
+    const teamTag = p.team === 'red'
+      ? '<span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5"></span>'
+      : '<span class="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1.5"></span>';
+    return `
+      <tr class="${isMvp ? 'bg-amber-500/15 font-bold text-amber-200' : ''}">
+        <td class="py-2 px-3">${teamTag}#${p.arc.number} ${p.arc.name}${p.isHuman ? ' (1P)' : ''}${isMvp ? ' [MVP]' : ''}</td>
+        <td class="py-2 px-2 text-center font-bold">${p.record.pts}</td>
+        <td class="py-2 px-2 text-center">${p.record.reb}</td>
+        <td class="py-2 px-2 text-center">${p.record.blk}</td>
+        <td class="py-2 px-2 text-center">${p.record.stl}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('resultModal').classList.remove('hidden');
+}
+
+// ============================================================================
+// 8. 隊友與對手 AI 戰術跑位與決策系統
+// ============================================================================
+function updateAIPlayer(p, dt) {
+  if (p.stunTimer > 0 || p.dunkAnim) return;
+  p.aiDecisionTimer -= dt;
+
+  // 球在籃板或地板球狀態：所有人積極衝向落點卡位搶板
+  if (ball.state === 'REBOUND' || ball.state === 'LOOSE') {
+    const spot = ball.reboundSpot || { x: ball.x, z: ball.z };
+    movePlayerToward(p, spot.x + (p.slot - 1) * 0.45, spot.z + (p.team === 'red' ? 0.25 : -0.25), 1.0, dt);
+    const distBall = Math.hypot(p.x - ball.x, p.z - ball.z);
+    if (distBall < 1.65 && ball.y < 2.95 && p.y <= 0.05 && Math.random() < 0.14 * p.arc.stats.rebound) {
+      triggerJumpBlockOrRebound(p);
+    }
+    return;
+  }
+
+  const isOffenseTeam = p.team === game.possessionTeam;
+
+  if (p.hasBall) {
+    // AI 持球決策
+    if (game.mustClearThree) {
+      // 優先往三分線外運球或傳給線外隊友洗球
+      const mates = game.players.filter(m => m.team === p.team && m !== p);
+      const outMate = mates.find(m => isThreePoint(m.x, m.z));
+      if (outMate && Math.random() < 0.06) {
+        executePass(p, outMate);
+        return;
+      }
+      const targetX = p.x >= 0 ? 5.2 : -5.2;
+      movePlayerToward(p, targetX, 8.2, 1.0, dt);
+      return;
+    }
+
+    // 若是紅隊 AI 隊友持球，玩家要球或空檔時優先回傳玩家
+    if (p.team === 'red' && game.humanPlayer && getNearestOpponent(game.humanPlayer).dist > 2.1 && Math.random() < 0.035) {
+      executePass(p, game.humanPlayer);
+      return;
+    }
+
+    // 大招滿時有機會施放
+    if (p.ultEnergy >= 100 && Math.random() < 0.025) {
+      activateUltimateSkill(p);
+      return;
+    }
+
+    const distHoop = Math.hypot(p.x - COURT.hoopX, p.z - COURT.hoopZ);
+    const { dist: defDist } = getNearestOpponent(p);
+
+    // 籃下灌籃機會
+    if (distHoop <= COURT.dunkRange && (defDist > 1.35 || p.arc.stats.dunk > 0.88) && Math.random() < 0.09) {
+      startDunk(p, false);
+      return;
+    }
+
+    // 三分射手或空檔跳投機會
+    const wantThree = p.arc.id === 'sg' && isThreePoint(p.x, p.z);
+    if ((wantThree && defDist > 1.85 && Math.random() < 0.055) || (!isThreePoint(p.x, p.z) && defDist > 1.95 && Math.random() < 0.05) || game.shotClock < 2.2) {
+      p.chargeTime = 0.65;
+      releaseJumpShot(p, false);
+      return;
+    }
+
+    // 被貼防時嘗試突破或傳球
+    if (defDist < 1.55 && p.crossoverTimer <= 0 && Math.random() < 0.04) {
+      performCrossover(p);
+      return;
+    }
+    if (defDist < 1.45 && Math.random() < 0.045) {
+      const mates = game.players.filter(m => m.team === p.team && m !== p);
+      const openMate = mates.sort((a, b) => getNearestOpponent(b).dist - getNearestOpponent(a).dist)[0];
+      if (openMate && getNearestOpponent(openMate).dist > 1.9) {
+        executePass(p, openMate);
+        return;
+      }
+    }
+
+    // 預設運球切入或拉開空間
+    if (p.aiDecisionTimer <= 0) {
+      p.aiDecisionTimer = 0.7 + Math.random() * 0.5;
+      if (p.arc.id === 'sg') {
+        p.aiTarget = { x: (Math.random() > 0.5 ? 5.2 : -5.2), z: 6.8 + Math.random() * 1.4 };
+      } else {
+        p.aiTarget = { x: (Math.random() - 0.5) * 3.8, z: 2.3 + Math.random() * 2.2 };
+      }
+    }
+    movePlayerToward(p, p.aiTarget.x, p.aiTarget.z, 0.92, dt);
+  } else if (isOffenseTeam) {
+    // 無球進攻隊友跑位（若須洗球則跑向三分線外接應）
+    if (game.mustClearThree) {
+      const wingX = p.slot === 1 ? -5.6 : 5.6;
+      movePlayerToward(p, wingX, 7.6, 0.95, dt);
+    } else {
+      if (p.aiDecisionTimer <= 0) {
+        p.aiDecisionTimer = 1.1 + Math.random() * 0.7;
+        if (p.arc.id === 'pf') {
+          p.aiTarget = { x: (Math.random() - 0.5) * 3.2, z: 2.4 + Math.random() * 1.6 };
+        } else if (p.arc.id === 'sg') {
+          const side = p.slot === 1 ? -5.8 : 5.8;
+          p.aiTarget = { x: side + (Math.random() - 0.5) * 1.0, z: 5.5 + Math.random() * 2.5 };
+        } else {
+          p.aiTarget = { x: (p.slot === 1 ? -4.2 : 4.2), z: 4.2 + Math.random() * 2.6 };
+        }
+      }
+      movePlayerToward(p, p.aiTarget.x, p.aiTarget.z, 0.85, dt);
+    }
+  } else {
+    // AI 一對一盯人防守邏輯
+    const opponents = game.players.filter(o => o.team !== p.team);
+    const assigned = opponents[p.slot] || opponents[0];
+    // 站在進攻球員與籃框連線之間約 1.1m 處
+    const toHoopAngle = Math.atan2(COURT.hoopX - assigned.x, COURT.hoopZ - assigned.z);
+    const guardDist = assigned.hasBall ? 1.18 : 1.55;
+    const gx = assigned.x + Math.sin(toHoopAngle) * guardDist;
+    const gz = assigned.z + Math.cos(toHoopAngle) * guardDist;
+
+    movePlayerToward(p, gx, gz, assigned.hasBall ? 0.96 : 0.84, dt);
+    p.facing = Math.atan2(assigned.x - p.x, assigned.z - p.z);
+    p.intenseDef = assigned.hasBall && Math.hypot(assigned.x - p.x, assigned.z - p.z) < 2.1;
+
+    // 對手投籃或灌籃時 AI 嘗試起跳封阻
+    if (assigned.hasBall && assigned.dunkAnim && assigned.dunkAnim.t > 0.22 && Math.random() < 0.045) {
+      triggerJumpBlockOrRebound(p);
+    } else if (ball.state === 'SHOT' && ball.shooter === assigned && ball.shotData && ball.shotData.t < 0.22 && Math.random() < 0.06) {
+      triggerJumpBlockOrRebound(p);
+    } else if (assigned.hasBall && Math.hypot(assigned.x - p.x, assigned.z - p.z) < 1.45 && Math.random() < 0.012) {
+      attemptSteal(p);
+    }
+  }
+}
+
+function movePlayerToward(p, tx, tz, speedRatio, dt) {
+  const dx = tx - p.x;
+  const dz = tz - p.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist > 0.18) {
+    const spd = p.arc.stats.speed * speedRatio;
+    p.vx = (dx / dist) * spd;
+    p.vz = (dz / dist) * spd;
+    p.facing = Math.atan2(dx, dz);
+  } else {
+    p.vx *= 0.75;
+    p.vz *= 0.75;
+    p.facing = Math.atan2(COURT.hoopX - p.x, COURT.hoopZ - p.z);
+  }
+}
+
+// ============================================================================
+// 9. 物理與遊戲主迴圈更新 (Update)
+// ============================================================================
+function updateGame(rawDt) {
+  if (camera.shakeTime > 0) camera.shakeTime = Math.max(0, camera.shakeTime - rawDt);
+  if (game.clearFlashTimer > 0) game.clearFlashTimer = Math.max(0, game.clearFlashTimer - rawDt);
+  if (game.netSway > 0) game.netSway = Math.max(0, game.netSway - rawDt * 1.8);
+
+  let dt = rawDt;
+  if (camera.slowMoTimer > 0) {
+    camera.slowMoTimer = Math.max(0, camera.slowMoTimer - rawDt);
+    dt = rawDt * 0.36;
+    if (camera.slowMoTimer <= 0) camera.targetZoom = 1.0;
+  }
+  camera.zoom += (camera.targetZoom - camera.zoom) * Math.min(1, rawDt * 5);
+
+  if (game.state === 'MENU' || game.state === 'OVER') return;
+
+  if (game.state === 'CELEBRATE') {
+    game.celebrateTimer -= rawDt;
+    if (game.celebrateTimer <= 0 && game.state === 'CELEBRATE') {
+      setupCheckBall(game.nextOffenseTeam);
+    }
+  }
+
+  // 計時器與進攻 14 秒違例檢查
+  if (game.state === 'PLAYING') {
+    if (!game.overtime) {
+      game.clock -= dt;
+      if (game.clock <= 0) {
+        game.clock = 0;
+        if (game.scoreRed === game.scoreBlue) {
+          game.overtime = true;
+          showHotBanner('平手延長・黃金得分驟死賽！', '下一球得分隊伍直接獲勝！', 'gold');
+          sfx.whistle();
+        } else {
+          finishMatch();
+          return;
+        }
+      }
+    }
+
+    if (ball.state === 'HELD' || ball.state === 'PASS') {
+      game.shotClock -= dt;
+      if (game.shotClock <= 0) {
+        sfx.whistle();
+        showHotBanner('14秒進攻違例！球權轉換', '', 'red');
+        const nextTeam = game.possessionTeam === 'red' ? 'blue' : 'red';
+        setupCheckBall(nextTeam);
+        return;
+      }
+    }
+  }
+
+  // 更新所有球員移動與動作
+  game.players.forEach(p => {
+    if (p.stunTimer > 0) p.stunTimer = Math.max(0, p.stunTimer - dt);
+    if (p.happyTimer > 0) p.happyTimer = Math.max(0, p.happyTimer - rawDt);
+    if (p.stealCooldown > 0) p.stealCooldown = Math.max(0, p.stealCooldown - dt);
+    if (p.jumpTimer > 0) p.jumpTimer = Math.max(0, p.jumpTimer - dt);
+    if (p.crossoverTimer > 0) p.crossoverTimer = Math.max(0, p.crossoverTimer - dt);
+
+    // 體力恢復與消耗
+    const movingFast = Math.hypot(p.vx, p.vz) > 2.2;
+    if (p.intenseDef || movingFast) {
+      p.stamina = Math.max(20, p.stamina - dt * (p.intenseDef ? 8.5 : 3.2));
+    } else {
+      p.stamina = Math.min(100, p.stamina + dt * 11.5);
+    }
+
+    // 灌籃飛行動畫處理
+    if (p.dunkAnim) {
+      p.dunkAnim.t += dt;
+      const prog = Math.min(1, p.dunkAnim.t / p.dunkAnim.dur);
+      p.x = p.dunkAnim.startX + (COURT.hoopX - p.dunkAnim.startX) * prog;
+      p.z = p.dunkAnim.startZ + (COURT.hoopZ + 0.18 - p.dunkAnim.startZ) * prog;
+      p.y = Math.sin(prog * Math.PI) * (p.dunkAnim.isUlt ? 2.65 : 1.95);
+      p.facing = Math.PI;
+      ball.x = p.x;
+      ball.y = p.y + 1.95;
+      ball.z = p.z - 0.12;
+
+      if (prog >= 1) {
+        const wasUlt = p.dunkAnim.isUlt;
+        p.dunkAnim = null;
+        p.isDoingUlt = false;
+        p.y = 0;
+        p.hasBall = false;
+        ball.state = 'LOOSE';
+        ball.x = COURT.hoopX;
+        ball.y = COURT.hoopY - 0.25;
+        ball.z = COURT.hoopZ;
+        ball.vx = 0;
+        ball.vz = 0.5;
+        ball.vy = -3.5;
+        sfx.dunkBoom();
+        triggerShake(wasUlt ? 18 : 13, 0.32);
+        handleScore(p, 2, wasUlt ? '覺醒飛人戰斧暴扣' : '霸氣雙手灌籃');
+      }
+      return;
+    }
+
+    // 玩家手動控制 vs AI 控制
+    if (p.isHuman && game.state === 'PLAYING') {
+      if (p.stunTimer <= 0 && p.crossoverTimer <= 0) {
+        const mv = getHumanMoveVector();
+        const speedMult = p.chargeActive ? 0.35 : (p.intenseDef ? 0.68 : 1.0);
+        const staminaMult = p.stamina < 30 ? 0.82 : 1.0;
+        p.vx = mv.mx * p.arc.stats.speed * speedMult * staminaMult;
+        p.vz = mv.mz * p.arc.stats.speed * speedMult * staminaMult;
+
+        if (mv.mag > 0.12) {
+          p.facing = Math.atan2(mv.mx, mv.mz);
+        } else if (p.hasBall) {
+          p.facing = Math.atan2(COURT.hoopX - p.x, COURT.hoopZ - p.z);
+        } else if (ball.holder) {
+          p.facing = Math.atan2(ball.holder.x - p.x, ball.holder.z - p.z);
+        }
+      } else if (p.stunTimer > 0) {
+        p.vx *= 0.85;
+        p.vz *= 0.85;
+      }
+
+      if (p.chargeActive) {
+        p.chargeTime += dt * 1.15;
+        if (p.chargeTime >= 1.0) {
+          releaseJumpShot(p, false);
+        }
+      }
+    } else if (game.state === 'PLAYING') {
+      updateAIPlayer(p, dt);
+    } else {
+      p.vx *= 0.8;
+      p.vz *= 0.8;
+    }
+
+    // 位置與跳躍重力更新
+    p.x += p.vx * dt;
+    p.z += p.vz * dt;
+    p.x = Math.max(-COURT.halfW + 0.4, Math.min(COURT.halfW - 0.4, p.x));
+    p.z = Math.max(0.55, Math.min(COURT.length - 0.4, p.z));
+
+    if (p.y > 0 || p.vy !== 0) {
+      p.y += p.vy * dt;
+      p.vy -= 13.5 * dt;
+      if (p.y <= 0) {
+        p.y = 0;
+        p.vy = 0;
+      }
+    }
+
+    // 持球者跨出三分線自動完成「洗球」！
+    if (p.hasBall && game.mustClearThree && isThreePoint(p.x, p.z)) {
+      completeClearBall(p);
+    }
+  });
+
+  // 更新籃球物理狀態
+  updateBallPhysics(dt);
+
+  // 更新粒子與浮動文字
+  for (let i = game.particles.length - 1; i >= 0; i--) {
+    const pt = game.particles[i];
+    pt.life -= rawDt;
+    pt.x += pt.vx * rawDt;
+    pt.y += pt.vy * rawDt;
+    pt.z += pt.vz * rawDt;
+    pt.vy -= 9.8 * rawDt;
+    if (pt.life <= 0) game.particles.splice(i, 1);
+  }
+
+  for (let i = game.floatTexts.length - 1; i >= 0; i--) {
+    const ft = game.floatTexts[i];
+    ft.life -= rawDt;
+    ft.y += ft.vy * rawDt;
+    if (ft.life <= 0) game.floatTexts.splice(i, 1);
+  }
+}
+
+function updateBallPhysics(dt) {
+  if (ball.state === 'HELD' && ball.holder) {
+    const h = ball.holder;
+    if (h.dunkAnim) return;
+    if (h.chargeActive) {
+      ball.x = h.x + Math.sin(h.facing) * 0.18;
+      ball.z = h.z + Math.cos(h.facing) * 0.18;
+      ball.y = h.y + 1.82;
+    } else {
+      const prevPhase = ball.dribblePhase;
+      ball.dribblePhase += dt * (Math.hypot(h.vx, h.vz) > 1.0 ? 11.5 : 7.5);
+      if (Math.floor(ball.dribblePhase / Math.PI) > Math.floor(prevPhase / Math.PI)) {
+        sfx.dribble();
+      }
+      const bounce = Math.abs(Math.cos(ball.dribblePhase));
+      ball.x = h.x + Math.sin(h.facing + 0.6) * 0.36;
+      ball.z = h.z + Math.cos(h.facing + 0.6) * 0.36;
+      ball.y = h.y + 0.22 + bounce * 0.72;
+    }
+  } else if (ball.state === 'PASS' && ball.passTarget) {
+    const t = ball.passTarget;
+    const dx = t.x - ball.x;
+    const dz = t.z - ball.z;
+    const dist = Math.hypot(dx, dz);
+    const passSpeed = 14.5;
+    if (dist < 0.55) {
+      giveBallTo(t, true);
+    } else {
+      ball.x += (dx / dist) * passSpeed * dt;
+      ball.z += (dz / dist) * passSpeed * dt;
+      ball.y = 1.15 + Math.sin(Math.min(1, dist / 6) * Math.PI) * 0.45;
+    }
+  } else if (ball.state === 'SHOT' && ball.shotData) {
+    const sd = ball.shotData;
+    sd.t += dt;
+    const u = Math.min(1, sd.t / sd.dur);
+    ball.x = sd.startX + (sd.targetX - sd.startX) * u;
+    ball.z = sd.startZ + (sd.targetZ - sd.startZ) * u;
+
+    // 拋物線高度計算
+    const linearY = sd.startY + (sd.targetY - sd.startY) * u;
+    const parabola = 4 * u * (1 - u) * (sd.arcHeight - Math.max(sd.startY, sd.targetY) * 0.65);
+    ball.y = linearY + parabola;
+
+    ball.trail.push({ x: ball.x, y: ball.y, z: ball.z, isUlt: sd.isUltShot });
+    if (ball.trail.length > 14) ball.trail.shift();
+
+    if (u >= 1) {
+      ball.trail = [];
+      if (sd.willMake) {
+        sfx.swish();
+        ball.state = 'LOOSE';
+        ball.shotData = null;
+        ball.vx = 0;
+        ball.vz = 0.25;
+        ball.vy = -3.0;
+        const label = sd.points === 3 ? (sd.isUltShot ? '必殺三分神射' : '空心三分球') : (sd.isUltShot ? '覺醒後仰跳投' : '精準中距離跳投');
+        handleScore(ball.shooter, sd.points, label);
+      } else {
+        // 投籃打鐵彈框！進入籃板球爭搶狀態
+        sfx.clank();
+        triggerShake(5, 0.14);
+        ball.state = 'REBOUND';
+        ball.shotData = null;
+        const rebAngle = (Math.random() - 0.5) * Math.PI * 0.85;
+        const rebDist = 1.7 + Math.random() * 2.1;
+        const rx = Math.max(-5.2, Math.min(5.2, COURT.hoopX + Math.sin(rebAngle) * rebDist));
+        const rz = Math.max(1.8, Math.min(6.2, COURT.hoopZ + Math.cos(rebAngle) * rebDist));
+        const hangTime = 0.92;
+        ball.vx = (rx - ball.x) / hangTime;
+        ball.vz = (rz - ball.z) / hangTime;
+        ball.vy = 3.6;
+        ball.reboundSpot = { x: rx, z: rz };
+        spawnFloatText('打鐵彈框！爭搶籃板！', COURT.hoopX, COURT.hoopY + 0.7, COURT.hoopZ, '#fbbf24', 19);
+      }
+    }
+  } else if (ball.state === 'REBOUND' || ball.state === 'LOOSE') {
+    ball.x += ball.vx * dt;
+    ball.z += ball.vz * dt;
+    ball.y += ball.vy * dt;
+    ball.vy -= 9.8 * dt;
+
+    // 籃板反彈防穿牆
+    if (ball.z < COURT.backboardZ + 0.18 && ball.y > 2.2) {
+      ball.z = COURT.backboardZ + 0.18;
+      ball.vz = Math.abs(ball.vz) * 0.7;
+    }
+
+    if (ball.y <= 0.24) {
+      ball.y = 0.24;
+      ball.vy = Math.abs(ball.vy) * 0.52;
+      ball.vx *= 0.72;
+      ball.vz *= 0.72;
+      if (Math.abs(ball.vy) > 0.8) sfx.dribble();
+    }
+
+    // 球員靠近自動撿起籃板或地板球 (僅在比賽進行中)
+    if (game.state === 'PLAYING' && ball.y < 2.25) {
+      for (const p of game.players) {
+        if (p.stunTimer > 0) continue;
+        const d = Math.hypot(p.x - ball.x, p.z - ball.z);
+        if (d < 0.95 && Math.abs(p.y + 1.1 - ball.y) < 1.35) {
+          if (ball.state === 'REBOUND') {
+            secureRebound(p);
+          } else {
+            giveBallTo(p, true);
+          }
+          break;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// 10. HUD 動態更新與左上角卡通表情頭像連動
+// ============================================================================
+let lastHudPortraitKey = '';
+let lastTeammateHolderId = '';
+
+function getPlayerMood(p) {
+  if (p.stunTimer > 0) return 'stunned';
+  if (p.isDoingUlt || p.dunkAnim || p.chargeActive || p.jumpTimer > 0.15) return 'intense';
+  if (p.happyTimer > 0) return 'happy';
+  return 'normal';
+}
+
+function renderTeammateMiniAvatars() {
+  const row = document.getElementById('teammateMiniRow');
+  if (!row || !game.humanPlayer) return;
+  const mates = game.players.filter(pl => pl.team === 'red' && pl !== game.humanPlayer);
+  row.innerHTML = mates.map(m => {
+    const holding = m.hasBall;
+    return `
+      <div class="flex items-center gap-1.5 bg-slate-900/85 border ${holding ? 'border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]' : 'border-slate-700'} rounded-xl px-2 py-1 backdrop-blur">
+        <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-600 overflow-hidden shrink-0">
+          ${buildChibiSVG(m.arc, 'head', getPlayerMood(m), 'red')}
+        </div>
+        <div class="leading-tight">
+          <div class="text-[10px] font-black text-white">#${m.arc.number} ${m.arc.shortName}</div>
+          <div class="text-[9px] font-bold ${holding ? 'text-amber-300' : 'text-slate-400'}">${holding ? '持球進攻' : '跑位支援'}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateHUD() {
+  if (game.state === 'MENU') return;
+
+  document.getElementById('scoreRed').textContent = game.scoreRed;
+  document.getElementById('scoreBlue').textContent = game.scoreBlue;
+
+  if (game.overtime) {
+    document.getElementById('gameClock').textContent = 'OT';
+  } else {
+    const totalSec = Math.max(0, Math.ceil(game.clock));
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    document.getElementById('gameClock').textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  document.getElementById('shotClock').textContent = Math.max(0, Math.ceil(game.shotClock));
+
+  const clearAlert = document.getElementById('clearBallAlert');
+  if (game.mustClearThree) {
+    clearAlert.classList.remove('hidden');
+    clearAlert.textContent = game.possessionTeam === 'red'
+      ? '請出三分線洗球！（運球或傳球跨出閃爍弧線）'
+      : '對手需出三分線洗球！趁機貼身壓迫防守！';
+  } else {
+    clearAlert.classList.add('hidden');
+  }
+
+  const p = game.humanPlayer;
+  if (!p) return;
+
+  const mood = getPlayerMood(p);
+  const ultReady = p.ultEnergy >= 100;
+  const portraitKey = `${p.arc.number}_${mood}_${ultReady}`;
+  if (portraitKey !== lastHudPortraitKey) {
+    lastHudPortraitKey = portraitKey;
+    document.getElementById('hudMainPortrait').innerHTML = buildChibiSVG(p.arc, 'head', mood, p.team);
+    document.getElementById('hudMainJersey').textContent = `#${p.arc.number}`;
+    document.getElementById('hudMainName').textContent = p.arc.name;
+
+    const moodLabels = {
+      normal: ultReady ? '覺醒就緒！按 Space 必殺' : '專注對決中',
+      intense: '熱血全力爆發！',
+      happy: '好球！士氣高漲！',
+      stunned: '重心不穩硬直中！'
+    };
+    document.getElementById('hudMoodBadge').textContent = moodLabels[mood];
+
+    const aura = document.getElementById('avatarUltAura');
+    const card = document.getElementById('mainAvatarCard');
+    if (ultReady) {
+      aura.classList.remove('hidden');
+      card.classList.add('border-amber-400', 'shadow-[0_0_22px_rgba(251,191,36,0.65)]');
+    } else {
+      aura.classList.add('hidden');
+      card.classList.remove('border-amber-400', 'shadow-[0_0_22px_rgba(251,191,36,0.65)]');
+    }
+    renderTeammateMiniAvatars();
+  }
+
+  const holderKey = ball.holder ? `${ball.holder.team}_${ball.holder.arc.number}` : 'none';
+  if (holderKey !== lastTeammateHolderId) {
+    lastTeammateHolderId = holderKey;
+    renderTeammateMiniAvatars();
+  }
+
+  document.getElementById('hudStaminaBar').style.width = `${Math.round(p.stamina)}%`;
+  document.getElementById('hudUltBar').style.width = `${Math.floor(p.ultEnergy)}%`;
+
+  // 右下角圓形技能按鈕隨「進攻 / 防守 / 籃板」狀態即時切換名稱與顏色
+  const pct = Math.floor(p.ultEnergy);
+  document.getElementById('ultFillBg').style.height = `${pct}%`;
+  document.getElementById('lblUlt').textContent = pct >= 100 ? '覺醒必殺' : `必殺 ${pct}%`;
+  const btnUlt = document.getElementById('btnSkillUlt');
+  if (pct >= 100 && p.hasBall) {
+    btnUlt.classList.add('ring-4', 'ring-yellow-300', 'animate-pulse');
+  } else {
+    btnUlt.classList.remove('ring-4', 'ring-yellow-300', 'animate-pulse');
+  }
+
+  const btnJ = document.getElementById('btnSkillJ');
+  const lblJ = document.getElementById('lblBtnJ');
+  const subJ = document.getElementById('subLblBtnJ');
+  const lblK = document.getElementById('lblBtnK');
+  const lblL = document.getElementById('lblBtnL');
+
+  if (p.hasBall) {
+    const nearRim = Math.hypot(p.x - COURT.hoopX, p.z - COURT.hoopZ) <= COURT.dunkRange;
+    lblJ.textContent = nearRim ? '灌籃' : '投籃';
+    subJ.textContent = nearRim ? '按 J 暴扣' : '長按 J 綠區';
+    btnJ.className = 'action-btn absolute bottom-1 right-0 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-red-500 via-orange-600 to-red-800 border-4 border-amber-300 flex flex-col items-center justify-center shadow-[0_0_25px_rgba(239,68,68,0.65)]';
+    lblK.textContent = '傳球';
+    lblL.textContent = '突破';
+  } else if (ball.state === 'REBOUND' || ball.state === 'LOOSE') {
+    lblJ.textContent = '籃板';
+    subJ.textContent = '按 J 起跳';
+    btnJ.className = 'action-btn absolute bottom-1 right-0 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-500 via-yellow-600 to-orange-700 border-4 border-yellow-200 flex flex-col items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.75)]';
+    lblK.textContent = '撲球';
+    lblL.textContent = '卡位';
+  } else {
+    lblJ.textContent = '火鍋';
+    subJ.textContent = '按 J 封蓋';
+    btnJ.className = 'action-btn absolute bottom-1 right-0 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-indigo-600 via-blue-700 to-slate-900 border-4 border-sky-300 flex flex-col items-center justify-center shadow-[0_0_25px_rgba(56,189,248,0.55)]';
+    lblK.textContent = '抄截';
+    lblL.textContent = '盯防';
+  }
+}
+
+// ============================================================================
+// 11. Canvas 2.5D 球場、地面光圈、6名 Q版卡通球員與籃球渲染引擎
+// ============================================================================
+function drawScene() {
+  ctx.clearRect(0, 0, viewW, viewH);
+
+  // 1. 街頭籃球夜間燈光場館背景與觀眾席剪影
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, viewH * 0.35);
+  skyGrad.addColorStop(0, '#050811');
+  skyGrad.addColorStop(1, '#172036');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  // 場館聚光燈束
+  ctx.save();
+  const spotGrad = ctx.createRadialGradient(viewW * 0.5, viewH * 0.08, 10, viewW * 0.5, viewH * 0.45, viewW * 0.65);
+  spotGrad.addColorStop(0, 'rgba(251, 191, 36, 0.16)');
+  spotGrad.addColorStop(0.6, 'rgba(56, 189, 248, 0.05)');
+  spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = spotGrad;
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.restore();
+
+  drawCourtSurfaceAndLines();
+  drawGroundIndicators();
+
+  // 2. 依 Z 深度排序繪製籃架、6 名 Q 版球員與籃球 (遠到近正確保證遮擋關係)
+  const renderList = [];
+  renderList.push({ type: 'HOOP_BASE', z: COURT.backboardZ - 0.1 });
+
+  game.players.forEach(p => {
+    renderList.push({ type: 'PLAYER', z: p.z, obj: p });
+  });
+
+  renderList.push({ type: 'BALL', z: ball.z + 0.05 });
+  renderList.push({ type: 'HOOP_RIM', z: COURT.hoopZ + 0.08 });
+
+  renderList.sort((a, b) => a.z - b.z);
+
+  renderList.forEach(item => {
+    if (item.type === 'HOOP_BASE') drawHoopStanchionAndBackboard();
+    else if (item.type === 'PLAYER') drawChibiPlayerOnCanvas(item.obj);
+    else if (item.type === 'BALL') drawBasketball();
+    else if (item.type === 'HOOP_RIM') drawRimAndNet();
+  });
+
+  drawParticlesAndFloatTexts();
+}
+
+// 繪製 2.5D 木地板半場、禁區、罰球線與呼吸閃爍三分線
+function drawCourtSurfaceAndLines() {
+  const cTL = project3D(-COURT.halfW, 0, 0);
+  const cTR = project3D(COURT.halfW, 0, 0);
+  const cBR = project3D(COURT.halfW, 0, COURT.length);
+  const cBL = project3D(-COURT.halfW, 0, COURT.length);
+
+  // 場外深紅藍街頭邊框區
+  const oTL = project3D(-COURT.halfW - 1.3, 0, -0.9);
+  const oTR = project3D(COURT.halfW + 1.3, 0, -0.9);
+  const oBR = project3D(COURT.halfW + 1.3, 0, COURT.length + 1.0);
+  const oBL = project3D(-COURT.halfW - 1.3, 0, COURT.length + 1.0);
+
+  ctx.beginPath();
+  ctx.moveTo(oTL.x, oTL.y);
+  ctx.lineTo(oTR.x, oTR.y);
+  ctx.lineTo(oBR.x, oBR.y);
+  ctx.lineTo(oBL.x, oBL.y);
+  ctx.closePath();
+  ctx.fillStyle = '#1e293b';
+  ctx.fill();
+
+  // 主球場溫暖楓木地板漸層
+  const woodGrad = ctx.createLinearGradient(0, cTL.y, 0, cBL.y);
+  woodGrad.addColorStop(0, '#c88a4b');
+  woodGrad.addColorStop(0.5, '#d99b59');
+  woodGrad.addColorStop(1, '#b67639');
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(cTL.x, cTL.y);
+  ctx.lineTo(cTR.x, cTR.y);
+  ctx.lineTo(cBR.x, cBR.y);
+  ctx.lineTo(cBL.x, cBL.y);
+  ctx.closePath();
+  ctx.fillStyle = woodGrad;
+  ctx.fill();
+  ctx.clip();
+
+  // 木紋拼接條紋質感
+  for (let i = -14; i <= 14; i++) {
+    const p1 = project3D(i * 0.55, 0, 0);
+    const p2 = project3D(i * 0.55, 0, COURT.length);
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(120, 53, 15, 0.14)' : 'rgba(254, 243, 199, 0.08)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
+
+  // 禁區油漆區 (湘北熱血深紅配色)
+  const kTL = project3D(-COURT.keyHalfW, 0, 0);
+  const kTR = project3D(COURT.keyHalfW, 0, 0);
+  const kBR = project3D(COURT.keyHalfW, 0, COURT.freeThrowZ);
+  const kBL = project3D(-COURT.keyHalfW, 0, COURT.freeThrowZ);
+  ctx.beginPath();
+  ctx.moveTo(kTL.x, kTL.y);
+  ctx.lineTo(kTR.x, kTR.y);
+  ctx.lineTo(kBR.x, kBR.y);
+  ctx.lineTo(kBL.x, kBL.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(185, 28, 28, 0.82)';
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.6;
+  ctx.stroke();
+
+  // 罰球圈半圓
+  ctx.beginPath();
+  for (let i = 0; i <= 24; i++) {
+    const ang = (i / 24) * Math.PI;
+    const wx = Math.cos(ang) * 1.8;
+    const wz = COURT.freeThrowZ + Math.sin(ang) * 1.8;
+    const pt = project3D(wx, 0, wz);
+    if (i === 0) ctx.moveTo(pt.x, pt.y);
+    else ctx.lineTo(pt.x, pt.y);
+  }
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
+
+  // 三分線（含「需出線洗球」青黃雙色高亮呼吸閃爍特效）
+  const now = performance.now() * 0.008;
+  let threeColor = '#ffffff';
+  let threeWidth = 3.0;
+  if (game.mustClearThree) {
+    threeColor = Math.sin(now * 2.8) > 0 ? '#22d3ee' : '#facc15';
+    threeWidth = 5.6;
+  } else if (game.clearFlashTimer > 0) {
+    threeColor = '#4ade80';
+    threeWidth = 5.6;
+  }
+
+  ctx.save();
+  if (game.mustClearThree) {
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 16;
+  } else if (game.clearFlashTimer > 0) {
+    ctx.shadowColor = '#4ade80';
+    ctx.shadowBlur = 16;
+  }
+  ctx.strokeStyle = threeColor;
+  ctx.lineWidth = threeWidth;
+  ctx.beginPath();
+  const cornerZ = 2.15;
+  const leftBase = project3D(-6.6, 0, 0);
+  ctx.moveTo(leftBase.x, leftBase.y);
+  const steps = 40;
+  const maxAng = Math.acos(-6.6 / COURT.threeRadius);
+  const minAng = Math.acos(6.6 / COURT.threeRadius);
+  const leftCorner = project3D(-6.6, 0, cornerZ);
+  ctx.lineTo(leftCorner.x, leftCorner.y);
+  for (let i = 0; i <= steps; i++) {
+    const a = maxAng - (i / steps) * (maxAng - minAng);
+    const wx = Math.cos(a) * COURT.threeRadius;
+    const wz = COURT.hoopZ + Math.sin(a) * COURT.threeRadius;
+    const pt = project3D(wx, 0, wz);
+    ctx.lineTo(pt.x, pt.y);
+  }
+  const rightCorner = project3D(6.6, 0, cornerZ);
+  const rightBase = project3D(6.6, 0, 0);
+  ctx.lineTo(rightCorner.x, rightCorner.y);
+  ctx.lineTo(rightBase.x, rightBase.y);
+  ctx.stroke();
+  ctx.restore();
+
+  // 球場外框邊線
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cTL.x, cTL.y);
+  ctx.lineTo(cTR.x, cTR.y);
+  ctx.lineTo(cBR.x, cBR.y);
+  ctx.lineTo(cBL.x, cBL.y);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 繪製地面戰術提示：傳球目標圈、扇形防守干擾區、籃板球落點脈衝光圈
+function drawGroundIndicators() {
+  const now = performance.now() * 0.006;
+
+  // 1. 玩家持球時的推薦傳球隊友提示圈
+  const hp = game.humanPlayer;
+  if (hp && hp.hasBall && game.state === 'PLAYING') {
+    const mates = game.players.filter(m => m.team === hp.team && m !== hp);
+    let bestMate = mates[0];
+    if (game.mustClearThree) {
+      const outMate = mates.find(m => isThreePoint(m.x, m.z));
+      if (outMate) bestMate = outMate;
+    } else if (mates.length > 1) {
+      bestMate = mates.sort((a, b) => getNearestOpponent(b).dist - getNearestOpponent(a).dist)[0];
+    }
+    if (bestMate) {
+      const mp = project3D(bestMate.x, 0.02, bestMate.z);
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(mp.x, mp.y, mp.scale * 0.48, mp.scale * 0.20, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.88)';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = `800 11px ${TC_FONT}`;
+      ctx.fillStyle = '#7dd3fc';
+      ctx.textAlign = 'center';
+      ctx.fillText('K 傳球', mp.x, mp.y + mp.scale * 0.34);
+      ctx.restore();
+    }
+  }
+
+  // 2. 防守者面向持球者時的腳下半透明紅/橘「扇形干擾區」
+  if (ball.holder && game.state === 'PLAYING') {
+    const holder = ball.holder;
+    game.players.forEach(def => {
+      if (def.team === holder.team || def.stunTimer > 0) return;
+      const dist = Math.hypot(holder.x - def.x, holder.z - def.z);
+      const fanRadius = def.intenseDef ? 2.45 : 2.0;
+      if (dist < 3.5) {
+        const isHeavy = dist < 1.28;
+        const spread = def.intenseDef ? 0.85 : 0.68;
+        const centerPt = project3D(def.x, 0.02, def.z);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(centerPt.x, centerPt.y);
+        for (let i = 0; i <= 16; i++) {
+          const a = def.facing - spread + (i / 16) * (spread * 2);
+          const wx = def.x + Math.sin(a) * fanRadius;
+          const wz = def.z + Math.cos(a) * fanRadius;
+          const p = project3D(wx, 0.02, wz);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = isHeavy ? 'rgba(239, 68, 68, 0.34)' : 'rgba(251, 146, 60, 0.24)';
+        ctx.fill();
+        ctx.strokeStyle = isHeavy ? 'rgba(248, 113, 113, 0.8)' : 'rgba(251, 191, 36, 0.65)';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+
+  // 3. 投籃不進時的「籃板球落點脈衝光圈」
+  if (ball.state === 'REBOUND' && ball.reboundSpot) {
+    const sp = project3D(ball.reboundSpot.x, 0.02, ball.reboundSpot.z);
+    const pulse = 0.85 + Math.sin(now * 3.5) * 0.2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(sp.x, sp.y, sp.scale * 0.72 * pulse, sp.scale * 0.30 * pulse, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.22)';
+    ctx.fill();
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = `900 13px ${TC_FONT}`;
+    ctx.fillStyle = '#fef08a';
+    ctx.textAlign = 'center';
+    ctx.fillText('籃板落點！按 J 搶板', sp.x, sp.y + sp.scale * 0.48);
+    ctx.restore();
+  }
+}
+
+// 繪製籃架支柱與透明強化玻璃籃板
+function drawHoopStanchionAndBackboard() {
+  const baseFloor = project3D(0, 0, -0.35);
+  const poleTop = project3D(0, 3.25, 0.45);
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = Math.max(6, baseFloor.scale * 0.18);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(baseFloor.x, baseFloor.y);
+  ctx.lineTo(baseFloor.x, poleTop.y);
+  ctx.lineTo(poleTop.x, poleTop.y);
+  ctx.stroke();
+
+  const bTL = project3D(-0.92, 3.95, COURT.backboardZ);
+  const bTR = project3D(0.92, 3.95, COURT.backboardZ);
+  const bBR = project3D(0.92, 2.88, COURT.backboardZ);
+  const bBL = project3D(-0.92, 2.88, COURT.backboardZ);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(bTL.x, bTL.y);
+  ctx.lineTo(bTR.x, bTR.y);
+  ctx.lineTo(bBR.x, bBR.y);
+  ctx.lineTo(bBL.x, bBL.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(226, 232, 240, 0.26)';
+  ctx.fill();
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // 籃板中央瞄籃紅框
+  const sTL = project3D(-0.30, 3.45, COURT.backboardZ);
+  const sBR = project3D(0.30, 3.05, COURT.backboardZ);
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2.2;
+  ctx.strokeRect(sTL.x, sTL.y, sBR.x - sTL.x, sBR.y - sTL.y);
+  ctx.restore();
+}
+
+// 繪製橘紅籃框與物理擺動籃網
+function drawRimAndNet() {
+  const rimC = project3D(COURT.hoopX, COURT.hoopY, COURT.hoopZ);
+  const rx = rimC.scale * COURT.rimRadius;
+  const ry = rx * 0.38;
+  const swayOffset = Math.sin(performance.now() * 0.025) * game.netSway * rx * 0.55;
+  const netH = rimC.scale * 0.46 * (1 - game.netSway * 0.18);
+
+  // 白色編織籃網
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+  ctx.lineWidth = 1.6;
+  const strands = 8;
+  for (let i = 0; i <= strands; i++) {
+    const a = (i / strands) * Math.PI * 2;
+    const topX = rimC.x + Math.cos(a) * rx;
+    const topY = rimC.y + Math.sin(a) * ry;
+    const botX = rimC.x + Math.cos(a + 0.35) * rx * 0.52 + swayOffset;
+    const botY = rimC.y + netH;
+    ctx.beginPath();
+    ctx.moveTo(topX, topY);
+    ctx.lineTo(botX, botY);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.ellipse(rimC.x + swayOffset, rimC.y + netH, rx * 0.52, ry * 0.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 鋼製橘紅籃框
+  ctx.beginPath();
+  ctx.ellipse(rimC.x, rimC.y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = '#ea580c';
+  ctx.lineWidth = 3.6;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 繪製球場上 1:2.2 大頭身 Q 版卡通球員（含 6 人差異化髮型、配件、即時表情與綠區投籃條）
+function drawChibiPlayerOnCanvas(p) {
+  const groundPt = project3D(p.x, 0, p.z);
+  const bodyPt = project3D(p.x, p.y, p.z);
+  const sc = bodyPt.scale;
+
+  // 1. 地面陰影
+  const shadowScale = Math.max(0.35, 1 - p.y * 0.22);
+  ctx.beginPath();
+  ctx.ellipse(groundPt.x, groundPt.y, sc * 0.42 * shadowScale, sc * 0.18 * shadowScale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.46 * shadowScale})`;
+  ctx.fill();
+
+  // 2. 玩家主控光環與持球指示圈
+  if (p.isHuman) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(groundPt.x, groundPt.y, sc * 0.58, sc * 0.24, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = p.ultEnergy >= 100 ? '#facc15' : '#4ade80';
+    ctx.lineWidth = 3.2;
+    ctx.shadowColor = p.ultEnergy >= 100 ? '#f59e0b' : '#22c55e';
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (p.hasBall) {
+    ctx.beginPath();
+    ctx.ellipse(groundPt.x, groundPt.y, sc * 0.48, sc * 0.20, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const isRed = p.team === 'red';
+  const jerseyMain = isRed ? '#dc2626' : '#f8fafc';
+  const jerseyTrim = isRed ? '#111827' : '#0284c7';
+  const numColor = isRed ? '#ffffff' : '#0369a1';
+  const skinColor = p.arc.skinColor || '#f6c89f';
+  const hairColor = p.arc.hairColor || '#111827';
+  const mood = getPlayerMood(p);
+
+  const speedMag = Math.hypot(p.vx, p.vz);
+  const runCycle = speedMag > 0.35 ? Math.sin(performance.now() * 0.02 + p.slot * 1.7) : 0;
+  const breathe = Math.sin(performance.now() * 0.005 + p.slot) * sc * 0.02;
+  const crouchY = p.intenseDef ? sc * 0.14 : 0;
+  const stunTilt = p.stunTimer > 0 ? 0.32 : 0;
+  const lookX = Math.max(-1, Math.min(1, Math.sin(p.facing))) * sc * 0.07;
+  const facingBack = Math.cos(p.facing) < -0.58 && !p.chargeActive && !p.dunkAnim && mood === 'normal';
+
+  ctx.save();
+  ctx.translate(bodyPt.x, bodyPt.y + crouchY);
+  if (stunTilt) ctx.rotate(stunTilt);
+
+  // (A) 動畫雙腿、護膝與紅白/藍白高筒球鞋
+  const legSpread = p.intenseDef ? sc * 0.23 : sc * 0.13;
+  const legL = runCycle * sc * 0.15;
+  const legR = -runCycle * sc * 0.15;
+
+  ctx.strokeStyle = skinColor;
+  ctx.lineWidth = Math.max(4.5, sc * 0.115);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-sc * 0.12, -sc * 0.56);
+  ctx.lineTo(-legSpread, -sc * 0.09 + legL);
+  ctx.moveTo(sc * 0.12, -sc * 0.56);
+  ctx.lineTo(legSpread, -sc * 0.09 + legR);
+  ctx.stroke();
+
+  if (p.arc.kneeBand) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(5.5, sc * 0.135);
+    ctx.beginPath();
+    ctx.moveTo(-legSpread * 0.82, -sc * 0.36 + legL * 0.5);
+    ctx.lineTo(-legSpread * 0.88, -sc * 0.27 + legL * 0.5);
+    ctx.stroke();
+  }
+
+  const drawSneaker = (sx, sy) => {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, sc * 0.125, sc * 0.068, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = isRed ? '#dc2626' : '#0284c7';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(sx - sc * 0.08, sy);
+    ctx.lineTo(sx + sc * 0.08, sy);
+    ctx.stroke();
+  };
+  drawSneaker(-legSpread, -sc * 0.055 + legL);
+  drawSneaker(legSpread, -sc * 0.055 + legR);
+
+  // (B) 球褲與球衣純數字號碼
+  ctx.fillStyle = jerseyMain;
+  ctx.strokeStyle = jerseyTrim;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(-sc * 0.24, -sc * 0.66, sc * 0.48, sc * 0.26, sc * 0.05);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = jerseyMain;
+  ctx.beginPath();
+  ctx.roundRect(-sc * 0.25, -sc * 1.12 + breathe, sc * 0.50, sc * 0.52, sc * 0.09);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = numColor;
+  ctx.font = `900 italic ${Math.max(10, Math.round(sc * 0.27))}px ${TC_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(p.arc.number, 0, -sc * 0.85 + breathe);
+
+  // (C) 雙臂動態姿勢與流川黑色護腕
+  ctx.strokeStyle = skinColor;
+  ctx.lineWidth = Math.max(4, sc * 0.10);
+  let leftHand = { x: -sc * 0.35, y: -sc * 0.74 };
+  let rightHand = { x: sc * 0.35, y: -sc * 0.74 };
+
+  if (p.dunkAnim) {
+    leftHand = { x: -sc * 0.38, y: -sc * 1.15 };
+    rightHand = { x: sc * 0.22, y: -sc * 1.98 };
+  } else if (p.chargeActive) {
+    leftHand = { x: -sc * 0.18, y: -sc * 1.76 };
+    rightHand = { x: sc * 0.18, y: -sc * 1.78 };
+  } else if (p.jumpTimer > 0) {
+    leftHand = { x: -sc * 0.30, y: -sc * 1.92 };
+    rightHand = { x: sc * 0.30, y: -sc * 1.92 };
+  } else if (p.intenseDef) {
+    leftHand = { x: -sc * 0.52, y: -sc * 0.92 };
+    rightHand = { x: sc * 0.52, y: -sc * 0.92 };
+  } else if (p.hasBall) {
+    const dribY = -sc * 0.65 - Math.abs(Math.cos(ball.dribblePhase)) * sc * 0.22;
+    leftHand = { x: -sc * 0.34, y: -sc * 0.82 - runCycle * sc * 0.08 };
+    rightHand = { x: sc * 0.38, y: dribY };
+  } else {
+    leftHand = { x: -sc * 0.34, y: -sc * 0.75 - runCycle * sc * 0.12 };
+    rightHand = { x: sc * 0.34, y: -sc * 0.75 + runCycle * sc * 0.12 };
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(-sc * 0.24, -sc * 1.04 + breathe);
+  ctx.lineTo(leftHand.x, leftHand.y);
+  ctx.moveTo(sc * 0.24, -sc * 1.04 + breathe);
+  ctx.lineTo(rightHand.x, rightHand.y);
+  ctx.stroke();
+
+  if (p.arc.armband) {
+    const wx = (-sc * 0.24 + leftHand.x) * 0.58;
+    const wy = (-sc * 1.04 + leftHand.y) * 0.58;
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = Math.max(5.5, sc * 0.125);
+    ctx.beginPath();
+    ctx.moveTo(wx, wy);
+    ctx.lineTo(wx + (leftHand.x + sc * 0.24) * 0.22, wy + (leftHand.y + sc * 1.04) * 0.22);
+    ctx.stroke();
+  }
+
+  // (D) 1:2.2 Q版大頭與即時卡通表情
+  const headY = -sc * 1.46 + breathe;
+  const headR = sc * 0.34;
+
+  if (p.arc.hairStyle === 'rukawa' || p.arc.hairStyle === 'sendoh') {
+    ctx.fillStyle = hairColor;
+    ctx.beginPath();
+    ctx.moveTo(-headR * 1.15, headY + headR * 0.1);
+    ctx.lineTo(-headR * 1.32, headY - headR * 0.55);
+    ctx.lineTo(-headR * 0.75, headY - headR * 0.75);
+    ctx.lineTo(-headR * 0.35, headY - headR * 1.42);
+    ctx.lineTo(0, headY - headR * 1.08);
+    ctx.lineTo(headR * 0.40, headY - headR * 1.45);
+    ctx.lineTo(headR * 0.82, headY - headR * 0.75);
+    ctx.lineTo(headR * 1.32, headY - headR * 0.52);
+    ctx.lineTo(headR * 1.15, headY + headR * 0.1);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = skinColor;
+  ctx.strokeStyle = '#451a03';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(-headR * 0.96, headY + headR * 0.06, headR * 0.22, 0, Math.PI * 2);
+  ctx.arc(headR * 0.96, headY + headR * 0.06, headR * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = skinColor;
+  ctx.beginPath();
+  ctx.arc(0, headY, headR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  if (!facingBack) {
+    const exL = -headR * 0.36 + lookX;
+    const exR = headR * 0.36 + lookX;
+    const ey = headY + headR * 0.06;
+
+    if (mood === 'stunned') {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(exL, ey, headR * 0.19, 0, Math.PI * 2);
+      ctx.arc(exR, ey, headR * 0.19, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(exL, ey, headR * 0.06, 0, Math.PI * 2);
+      ctx.arc(exR, ey, headR * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#7f1d1d';
+      ctx.beginPath();
+      ctx.arc(lookX, headY + headR * 0.46, headR * 0.14, 0, Math.PI * 2);
+      ctx.fill();
+      // 純幾何繪製藍色冷汗珠（不使用 Emoji）
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.ellipse(headR * 0.78, headY - headR * 0.15, headR * 0.12, headR * 0.22, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (mood === 'happy') {
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(exL, ey + headR * 0.04, headR * 0.15, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(exR, ey + headR * 0.04, headR * 0.15, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.arc(lookX, headY + headR * 0.36, headR * 0.26, 0, Math.PI);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(exL, ey, headR * 0.17, headR * 0.14, 0, 0, Math.PI * 2);
+      ctx.ellipse(exR, ey, headR * 0.17, headR * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(exL + lookX * 0.15, ey, headR * 0.09, 0, Math.PI * 2);
+      ctx.arc(exR + lookX * 0.15, ey, headR * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(exL + headR * 0.04, ey - headR * 0.04, headR * 0.038, 0, Math.PI * 2);
+      ctx.arc(exR + headR * 0.04, ey - headR * 0.04, headR * 0.038, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = p.arc.hairStyle === 'sakuragi' ? '#991b1b' : '#0f172a';
+      ctx.lineWidth = (mood === 'intense' || p.arc.hairStyle === 'sakuragi') ? 2.8 : 2.0;
+      const browTilt = mood === 'intense' ? headR * 0.14 : headR * 0.06;
+      ctx.beginPath();
+      ctx.moveTo(exL - headR * 0.18, ey - headR * 0.24);
+      ctx.lineTo(exL + headR * 0.16, ey - headR * 0.24 + browTilt);
+      ctx.moveTo(exR + headR * 0.18, ey - headR * 0.24);
+      ctx.lineTo(exR - headR * 0.16, ey - headR * 0.24 + browTilt);
+      ctx.stroke();
+
+      if (mood === 'intense') {
+        ctx.fillStyle = '#991b1b';
+        ctx.beginPath();
+        ctx.roundRect(lookX - headR * 0.20, headY + headR * 0.36, headR * 0.40, headR * 0.20, 3);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = '#7c2d12';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(lookX - headR * 0.14, headY + headR * 0.44);
+        ctx.quadraticCurveTo(lookX, headY + headR * 0.52, lookX + headR * 0.16, headY + headR * 0.42);
+        ctx.stroke();
+      }
+
+      if (p.arc.chinScar) {
+        ctx.strokeStyle = '#b45309';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.moveTo(lookX - headR * 0.28, headY + headR * 0.62);
+        ctx.lineTo(lookX - headR * 0.20, headY + headR * 0.72);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // (E) 6 種差異化角色髮型與頭帶
+  ctx.fillStyle = hairColor;
+  if (p.arc.hairStyle === 'rukawa') {
+    ctx.beginPath();
+    ctx.arc(0, headY - headR * 0.12, headR * 1.04, Math.PI * 0.95, Math.PI * 2.05);
+    ctx.lineTo(headR * 0.65, headY - headR * 0.02);
+    ctx.lineTo(headR * 0.35, headY - headR * 0.32);
+    ctx.lineTo(headR * 0.08, headY + headR * 0.04);
+    ctx.lineTo(-headR * 0.22, headY - headR * 0.32);
+    ctx.lineTo(-headR * 0.52, headY + headR * 0.02);
+    ctx.closePath();
+    ctx.fill();
+  } else if (p.arc.hairStyle === 'mitsui') {
+    ctx.beginPath();
+    ctx.arc(0, headY - headR * 0.12, headR * 1.05, Math.PI * 0.92, Math.PI * 2.08);
+    ctx.lineTo(headR * 0.85, headY + headR * 0.05);
+    ctx.quadraticCurveTo(headR * 0.35, headY - headR * 0.38, 0, headY - headR * 0.10);
+    ctx.quadraticCurveTo(-headR * 0.35, headY - headR * 0.38, -headR * 0.85, headY + headR * 0.05);
+    ctx.closePath();
+    ctx.fill();
+  } else if (p.arc.hairStyle === 'sakuragi') {
+    ctx.beginPath();
+    ctx.arc(0, headY - headR * 0.08, headR * 1.03, Math.PI * 1.03, Math.PI * 1.97);
+    ctx.quadraticCurveTo(0, headY - headR * 0.45, -headR * 1.02, headY - headR * 0.15);
+    ctx.fill();
+  } else if (p.arc.hairStyle === 'sendoh') {
+    ctx.beginPath();
+    ctx.moveTo(-headR * 0.98, headY - headR * 0.30);
+    ctx.lineTo(-headR * 0.55, headY - headR * 1.35);
+    ctx.lineTo(0, headY - headR * 1.55);
+    ctx.lineTo(headR * 0.58, headY - headR * 1.32);
+    ctx.lineTo(headR * 0.98, headY - headR * 0.30);
+    ctx.closePath();
+    ctx.fill();
+    if (p.arc.headband) {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(-headR * 1.02, headY - headR * 0.45, headR * 2.04, headR * 0.24, 3);
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (p.arc.hairStyle === 'uozumi') {
+    ctx.beginPath();
+    ctx.roundRect(-headR * 0.96, headY - headR * 1.22, headR * 1.92, headR * 0.78, 5);
+    ctx.fill();
+  } else {
+    // 飛機頭造型
+    ctx.beginPath();
+    ctx.arc(0, headY - headR * 0.15, headR * 1.02, Math.PI * 0.98, Math.PI * 2.02);
+    ctx.quadraticCurveTo(headR * 0.5, headY - headR * 1.55, -headR * 0.85, headY - headR * 0.65);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // (F) 頭頂幾何暈眩旋轉星圈 或 1P 標記 (純幾何繪製，不使用 Emoji 避免任何方塊字)
+  if (p.stunTimer > 0) {
+    const spinT = performance.now() * 0.008;
+    for (let s = 0; s < 3; s++) {
+      const sa = spinT + (s * Math.PI * 2) / 3;
+      const sx = Math.cos(sa) * headR * 0.75;
+      const sy = headY - headR * 1.35 + Math.sin(sa) * headR * 0.18;
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (p.isHuman) {
+    // 1P 黃金倒三角與標籤
+    const tagY = headY - headR * 1.52;
+    ctx.fillStyle = '#fde047';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(0, tagY + 8);
+    ctx.lineTo(-6, tagY);
+    ctx.lineTo(6, tagY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = `900 ${Math.max(10, Math.round(sc * 0.22))}px ${TC_FONT}`;
+    ctx.fillStyle = '#fef08a';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText('1P', 0, tagY - 7);
+    ctx.fillText('1P', 0, tagY - 7);
+  }
+
+  // (G) 手遊經典直立「投籃力度條 + 綠色完美出手區間」
+  if (p.chargeActive) {
+    const barW = Math.max(11, sc * 0.20);
+    const barH = Math.max(52, sc * 1.18);
+    const bx = sc * 0.56;
+    const by = -sc * 1.80;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, barW, barH, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    // 綠色完美區間 (中心 0.66)
+    const gCenter = 0.66;
+    const gHalf = p.arc.stats.greenWidth * 0.5;
+    const gTop = by + (1 - (gCenter + gHalf)) * barH;
+    const gHeight = p.arc.stats.greenWidth * barH;
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(bx + 1.5, gTop, barW - 3, gHeight);
+
+    // 當前力度填充與亮白橫向指針
+    const fillH = Math.min(1, p.chargeTime) * barH;
+    ctx.fillStyle = Math.abs(p.chargeTime - gCenter) <= gHalf ? '#86efac' : '#f97316';
+    ctx.fillRect(bx + 2, by + barH - fillH, barW - 4, fillH);
+
+    const ptrY = by + barH - fillH;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx - 3, ptrY - 2, barW + 6, 4);
+  }
+
+  ctx.restore();
+}
+
+// 繪製籃球與火焰飛行軌跡
+function drawBasketball() {
+  if (ball.holder && ball.holder.dunkAnim) {
+    // 灌籃時跟隨灌籃者手部繪製
+  }
+  const groundPt = project3D(ball.x, 0, ball.z);
+  const ballPt = project3D(ball.x, ball.y, ball.z);
+  const r = Math.max(6.5, ballPt.scale * 0.21);
+
+  // 球體地面投影陰影
+  const sFactor = Math.max(0.28, 1 - ball.y * 0.16);
+  ctx.beginPath();
+  ctx.ellipse(groundPt.x, groundPt.y, r * 1.05 * sFactor, r * 0.45 * sFactor, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.42 * sFactor})`;
+  ctx.fill();
+
+  // 投籃飛行殘影軌跡
+  if (ball.trail.length > 1) {
+    for (let i = 0; i < ball.trail.length; i++) {
+      const tp = ball.trail[i];
+      const proj = project3D(tp.x, tp.y, tp.z);
+      const alpha = (i + 1) / ball.trail.length;
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, r * 0.82 * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = tp.isUlt ? `rgba(250, 204, 21, ${alpha * 0.65})` : `rgba(251, 146, 60, ${alpha * 0.38})`;
+      ctx.fill();
+    }
+  }
+
+  // 籃球立體漸層與球紋
+  ctx.save();
+  const grad = ctx.createRadialGradient(ballPt.x - r * 0.3, ballPt.y - r * 0.3, r * 0.15, ballPt.x, ballPt.y, r);
+  grad.addColorStop(0, '#fdba74');
+  grad.addColorStop(0.55, '#ea580c');
+  grad.addColorStop(1, '#7c2d12');
+  ctx.beginPath();
+  ctx.arc(ballPt.x, ballPt.y, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = '#431407';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(ballPt.x - r, ballPt.y);
+  ctx.quadraticCurveTo(ballPt.x, ballPt.y - r * 0.35, ballPt.x + r, ballPt.y);
+  ctx.moveTo(ballPt.x, ballPt.y - r);
+  ctx.quadraticCurveTo(ballPt.x + r * 0.3, ballPt.y, ballPt.x, ballPt.y + r);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 繪製火花粒子與 Canvas 繁體中文浮動提示文字
+function drawParticlesAndFloatTexts() {
+  game.particles.forEach(pt => {
+    const p = project3D(pt.x, Math.max(0, pt.y), pt.z);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, pt.size, 0, Math.PI * 2);
+    ctx.fillStyle = pt.color;
+    ctx.fill();
+  });
+
+  game.floatTexts.forEach(ft => {
+    const p = project3D(ft.x, ft.y, ft.z);
+    const alpha = Math.max(0, Math.min(1, ft.life / ft.maxLife * 1.4));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `900 ${ft.size}px ${TC_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.strokeText(ft.text, p.x, p.y);
+    ctx.fillStyle = ft.color;
+    ctx.fillText(ft.text, p.x, p.y);
+    ctx.restore();
+  });
+}
+
+// ============================================================================
+// 12. 選單切換事件與主動畫啟動
+// ============================================================================
+function enterMatchUI() {
+  document.getElementById('mainMenu').classList.add('hidden');
+  document.getElementById('resultModal').classList.add('hidden');
+  document.getElementById('hudTop').classList.remove('hidden');
+  document.getElementById('liveAvatarHud').classList.remove('hidden');
+  document.getElementById('hudControls').classList.remove('hidden');
+  document.getElementById('topRightBtns').classList.remove('hidden');
+  initMatch();
+}
+
+function returnToMainMenu() {
+  game.state = 'MENU';
+  document.getElementById('mainMenu').classList.remove('hidden');
+  document.getElementById('resultModal').classList.add('hidden');
+  document.getElementById('hudTop').classList.add('hidden');
+  document.getElementById('liveAvatarHud').classList.add('hidden');
+  document.getElementById('ultCutInOverlay').classList.add('hidden');
+  document.getElementById('hudControls').classList.add('hidden');
+  document.getElementById('topRightBtns').classList.add('hidden');
+  renderArchetypeCards();
+}
+
+document.getElementById('btnStartMatch').addEventListener('click', () => {
+  sfx.unlock();
+  enterMatchUI();
+});
+
+document.getElementById('btnOpenHelp').addEventListener('click', () => {
+  sfx.unlock();
+  sfx.dribble();
+  document.getElementById('helpModal').classList.remove('hidden');
+});
+
+document.getElementById('btnCloseHelp').addEventListener('click', () => {
+  document.getElementById('helpModal').classList.add('hidden');
+});
+
+document.getElementById('btnToggleSound').addEventListener('click', () => {
+  sfx.enabled = !sfx.enabled;
+  if (sfx.enabled) sfx.unlock();
+  renderSoundButtonIcon();
+});
+
+document.getElementById('btnBackMenu').addEventListener('click', () => {
+  returnToMainMenu();
+});
+
+document.getElementById('btnRematch').addEventListener('click', () => {
+  sfx.unlock();
+  enterMatchUI();
+});
+
+document.getElementById('btnResultToMenu').addEventListener('click', () => {
+  returnToMainMenu();
+});
+
+let lastFrameTime = performance.now();
+
+function mainLoop(now) {
+  const rawDt = Math.min(0.05, Math.max(0.001, (now - lastFrameTime) / 1000));
+  lastFrameTime = now;
+
+  updateGame(rawDt);
+  drawScene();
+  updateHUD();
+
+  requestAnimationFrame(mainLoop);
+}
+
+window.onload = function () {
+  resizeCanvas();
+  lastFrameTime = performance.now();
+  requestAnimationFrame(mainLoop);
+};
+</script>
+</body>
+</html>
